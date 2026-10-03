@@ -1,0 +1,14 @@
+# prometheus-elasticsearch-exporter 7.4.0, next to es-dc2 (same namespace for the
+# credentials Secret). Scraped through its ServiceMonitor.
+es:
+  # $(ES_PASSWORD) is expanded by Kubernetes from the env var below.
+  uri: http://elastic:$(ES_PASSWORD)@es-dc2-es-http:9200
+extraEnvSecrets:
+  ES_PASSWORD:
+    secret: es-dc2-es-elastic-user
+    key: elastic
+serviceMonitor:
+  enabled: true
+resources:
+  requests: { cpu: 20m, memory: 32Mi }
+  limits: { cpu: 200m, memory: 128Mi }

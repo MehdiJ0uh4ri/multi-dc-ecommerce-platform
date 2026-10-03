@@ -1,0 +1,8 @@
+apiVersion: v2
+name: observability
+description: >-
+  Platform observability resources that no upstream chart ships: Prometheus Operator
+  PodMonitors/ServiceMonitors for the data stores and services in both DCs, alerting
+  rules, and the ECK-managed logging Elasticsearch + Kibana used by Fluent Bit.
+type: application
+version: 0.1.0

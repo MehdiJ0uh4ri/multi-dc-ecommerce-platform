@@ -1,0 +1,74 @@
+# kube-prometheus-stack 91.4.1 (Prometheus Operator v0.94.0): Prometheus, Alertmanager,
+# Grafana, kube-state-metrics, node-exporter. Alertmanager config is injected by
+# terraform/observability.tf (routes to Mailpit when DC2 is enabled).
+fullnameOverride: kps   # does not reach subcharts; they are named below
+
+prometheus:
+  prometheusSpec:
+    # Select every ServiceMonitor/PodMonitor/PrometheusRule in the cluster, not only
+    # those labelled with this release (charts/observability, exporters, APISIX, Keycloak).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    retention: 7d
+    resources:
+      requests: { cpu: 250m, memory: 1Gi }
+      limits: { cpu: "2", memory: 3Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+
+grafana:
+  fullnameOverride: kps-grafana
+  admin:
+    existingSecret: grafana-admin   # terraform/observability.tf
+    userKey: admin-user
+    passwordKey: admin-password
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+# node-exporter must also run on the tainted DC nodes.
+prometheus-node-exporter:
+  fullnameOverride: kps-prometheus-node-exporter
+  tolerations:
+    - operator: Exists
+  # k3d nodes are containers; host root fs mount propagation is not available.
+  hostRootFsMount:
+    enabled: false
+
+kube-state-metrics:
+  fullnameOverride: kps-kube-state-metrics
+
+# k3s runs these control-plane components inside the k3s binary; there are no separate
+# endpoints to scrape.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false

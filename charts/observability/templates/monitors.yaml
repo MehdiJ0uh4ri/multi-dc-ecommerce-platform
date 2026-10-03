@@ -1,0 +1,142 @@
+{{- if .Values.monitors.enabled }}
+{{- $dcs := .Values.dcNamespaces }}
+{{- $interval := .Values.monitors.interval }}
+# Kafka brokers, Kafka Exporter, Kafka Connect and MirrorMaker 2 (Strimzi 1.2.0
+# examples/metrics/prometheus-install/pod-monitors/kafka-resources-metrics.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: strimzi-kafka-resources
+spec:
+  selector:
+    matchExpressions:
+      - key: strimzi.io/kind
+        operator: In
+        values: ["Kafka", "KafkaConnect", "KafkaMirrorMaker2"]
+  namespaceSelector:
+    matchNames: {{ toJson $dcs }}
+  podMetricsEndpoints:
+    - path: /metrics
+      port: tcp-prometheus
+      interval: {{ $interval }}
+      relabelings:
+        - separator: ;
+          regex: __meta_kubernetes_pod_label_(strimzi_io_.+)
+          replacement: $1
+          action: labelmap
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+          action: replace
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: kubernetes_pod_name
+          action: replace
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: strimzi-cluster-operator
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/kind: cluster-operator
+  namespaceSelector:
+    matchNames: [{{ .Values.operatorsNamespace | quote }}]
+  podMetricsEndpoints:
+    - path: /metrics
+      port: http
+      interval: {{ $interval }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: strimzi-entity-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: entity-operator
+  namespaceSelector:
+    matchNames: {{ toJson $dcs }}
+  podMetricsEndpoints:
+    - path: /metrics
+      port: healthcheck-to
+      interval: {{ $interval }}
+---
+# CloudNativePG instances expose port "metrics" (9187); CNPG recommends a hand-written
+# PodMonitor (docs/src/monitoring.md, 1.30).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cnpg-clusters
+spec:
+  selector:
+    matchExpressions:
+      - key: cnpg.io/cluster
+        operator: Exists
+      - key: cnpg.io/podRole
+        operator: In
+        values: ["instance"]
+  namespaceSelector:
+    any: true
+  podMetricsEndpoints:
+    - port: metrics
+      interval: {{ $interval }}
+---
+# Cassandra: management API metrics endpoint, named port "metrics" (9000).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cassandra
+spec:
+  selector:
+    matchExpressions:
+      - key: cassandra.datastax.com/datacenter
+        operator: Exists
+  namespaceSelector:
+    matchNames: {{ toJson $dcs }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $interval }}
+---
+# RabbitMQ (rabbitmq_prometheus plugin, enabled by the Cluster Operator), from
+# cluster-operator v2.23.0 observability/prometheus/monitors/rabbitmq-servicemonitor.yml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: rabbitmq
+  namespaceSelector:
+    matchNames: {{ toJson $dcs }}
+  endpoints:
+    - port: prometheus
+      scheme: http
+      interval: 15s
+      scrapeTimeout: 14s
+    - port: prometheus
+      scheme: http
+      path: /metrics/detailed
+      params:
+        family: [queue_coarse_metrics, queue_metrics]
+      interval: 15s
+      scrapeTimeout: 14s
+---
+# Every Spring Boot service (charts/spring-service): Micrometer on the management port.
+# The Service name becomes the "service" label used by the platform dashboard.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spring-services
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: ecommerce
+  namespaceSelector:
+    matchNames: {{ toJson $dcs }}
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: {{ $interval }}
+{{- end }}

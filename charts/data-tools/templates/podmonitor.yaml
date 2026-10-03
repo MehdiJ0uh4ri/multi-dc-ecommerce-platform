@@ -1,0 +1,16 @@
+{{- if and .Values.metrics.enabled .Values.loadgen.enabled }}
+# Scraped by kube-prometheus-stack (podMonitorSelectorNilUsesHelmValues: false). Port 9000
+# is already open to the monitoring namespace (allow-monitoring@dc1).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: loadgen
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loadgen
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+{{- end }}

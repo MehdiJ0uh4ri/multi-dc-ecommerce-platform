@@ -1,0 +1,27 @@
+# Namespaces scraped by the monitors (set by Terraform).
+dcNamespaces: []
+operatorsNamespace: platform-operators
+
+monitors:
+  enabled: true
+  interval: 30s
+
+rules:
+  enabled: true
+  # Thresholds used by the alerting rules.
+  kafkaLagWarning: 1000
+  latencyP95Seconds: 1
+  errorRatio: 0.05
+
+# ECK-managed Elasticsearch + Kibana that receive the Fluent Bit log stream.
+logging:
+  enabled: false
+  namespace: logging
+  name: es-logs
+  version: 8.19.21
+  count: 1
+  storage: 20Gi
+  heap: 1g
+  resources: {}
+  kibana:
+    resources: {}

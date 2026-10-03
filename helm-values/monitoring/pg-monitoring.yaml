@@ -1,0 +1,15 @@
+# PostgreSQL for Icinga DB and Icinga Web 2 (charts/datastores, namespace monitoring).
+# Replaces icinga-stack's internal mariadb:latest (floating tag).
+postgres:
+  enabled: true
+  name: pg-monitoring
+  storage: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  owner:
+    role: icinga
+    database: icingadb
+    secret: pg-monitoring-icinga
+  databases:
+    - { name: icingaweb2, owner: icinga }

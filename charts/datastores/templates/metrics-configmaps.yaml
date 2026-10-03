@@ -1,0 +1,32 @@
+{{- if .Values.metrics.enabled }}
+{{- if .Values.kafka.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.kafka.name }}-metrics
+data:
+  metrics-config.yml: |
+    {{- .Files.Get "files/kafka-metrics.yml" | nindent 4 }}
+{{- end }}
+{{- if .Values.kafkaConnect.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.kafkaConnect.name }}-metrics
+data:
+  metrics-config.yml: |
+    {{- .Files.Get "files/connect-metrics.yml" | nindent 4 }}
+{{- end }}
+{{- if .Values.mirrorMaker2.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.mirrorMaker2.name }}-metrics
+data:
+  metrics-config.yml: |
+    {{- .Files.Get "files/mirror-maker-2-metrics.yml" | nindent 4 }}
+{{- end }}
+{{- end }}

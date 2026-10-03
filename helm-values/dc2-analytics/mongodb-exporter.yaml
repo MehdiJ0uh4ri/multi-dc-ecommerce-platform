@@ -1,0 +1,10 @@
+# prometheus-mongodb-exporter 3.22.0, next to mongo-dc2 (reads the operator-generated
+# connection string Secret of user "analytics").
+existingSecret:
+  name: mongo-dc2-admin-analytics
+  key: connectionString.standard
+serviceMonitor:
+  enabled: true
+resources:
+  requests: { cpu: 20m, memory: 32Mi }
+  limits: { cpu: 200m, memory: 128Mi }
