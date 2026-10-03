@@ -1,0 +1,77 @@
+{{- if .Values.rules.enabled }}
+{{- $dcs := join "|" .Values.dcNamespaces }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-alerts
+spec:
+  groups:
+    - name: platform.kafka
+      rules:
+        - alert: KafkaConsumerLagHigh
+          expr: sum by (namespace, consumergroup) (kafka_consumergroup_lag{namespace=~"{{ $dcs }}"}) > {{ .Values.rules.kafkaLagWarning }}
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Consumer group {{`{{ $labels.consumergroup }}`}} lags {{`{{ $value }}`}} messages in {{`{{ $labels.namespace }}`}}"
+        - alert: KafkaBrokerNotReady
+          expr: sum by (namespace, pod) (kube_pod_status_ready{condition="true", namespace=~"{{ $dcs }}", pod=~"kafka-.*-dual-role-.*"}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "Kafka broker {{`{{ $labels.pod }}`}} in {{`{{ $labels.namespace }}`}} is not ready"
+        - alert: KafkaConnectorFailed
+          expr: sum by (namespace, connector) (kafka_connect_connector_status{status="failed"}) > 0
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "Kafka connector {{`{{ $labels.connector }}`}} in {{`{{ $labels.namespace }}`}} is FAILED"
+    - name: platform.databases
+      rules:
+        - alert: PostgresInstanceDown
+          expr: cnpg_collector_up == 0
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "PostgreSQL instance {{`{{ $labels.pod }}`}} ({{`{{ $labels.namespace }}`}}) is down"
+        - alert: PostgresNotEnoughReadyInstances
+          expr: sum by (namespace, cluster) (cnpg_collector_up) < 1
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "PostgreSQL cluster {{`{{ $labels.cluster }}`}} has no ready instance"
+        - alert: ElasticsearchClusterNotGreen
+          expr: max by (namespace, cluster) (elasticsearch_cluster_health_status{color="green"}) == 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Elasticsearch {{`{{ $labels.cluster }}`}} health is not green"
+        - alert: RabbitMQQueueBacklog
+          expr: sum by (namespace, queue) (rabbitmq_detailed_queue_messages_ready) > 1000
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "RabbitMQ queue {{`{{ $labels.queue }}`}} has {{`{{ $value }}`}} ready messages"
+    - name: platform.services
+      rules:
+        - alert: ServiceLatencyP95High
+          expr: histogram_quantile(0.95, sum by (le, namespace, service) (rate(http_server_requests_seconds_bucket{namespace=~"{{ $dcs }}"}[5m]))) > {{ .Values.rules.latencyP95Seconds }}
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "p95 latency of {{`{{ $labels.service }}`}} is {{`{{ $value }}`}}s"
+        - alert: ServiceErrorRatioHigh
+          expr: |
+            sum by (namespace, service) (rate(http_server_requests_seconds_count{namespace=~"{{ $dcs }}", status=~"5.."}[5m]))
+              / sum by (namespace, service) (rate(http_server_requests_seconds_count{namespace=~"{{ $dcs }}"}[5m])) > {{ .Values.rules.errorRatio }}
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} returns 5xx for {{`{{ $value | humanizePercentage }}`}} of requests"
+        - alert: ServiceDown
+          expr: up{job=~".*-service", namespace=~"{{ $dcs }}"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.job }}`}} in {{`{{ $labels.namespace }}`}} is not scrapeable"
+{{- end }}
