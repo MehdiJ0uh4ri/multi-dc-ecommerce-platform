@@ -1,0 +1,23 @@
+# Partition the only DC1 <-> DC2 data path: MirrorMaker 2 (DC2) <-> Kafka (DC1).
+# Hypothesis: DC1 keeps taking orders, DC2 keeps serving reads from its own stores
+# (stale), MirrorMaker 2 lag grows and drains after the partition heals.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: dc-partition
+  namespace: dc2-analytics
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces: [dc2-analytics]
+    labelSelectors:
+      platform.local/role: kafka-replicator
+  direction: both
+  target:
+    mode: all
+    selector:
+      namespaces: [dc1-core]
+      labelSelectors:
+        platform.local/role: kafka-broker
+  duration: "3m"

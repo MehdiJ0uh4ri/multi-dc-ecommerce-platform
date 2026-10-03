@@ -1,0 +1,16 @@
+# Kill the pg-dc1 primary. Hypothesis: CloudNativePG promotes the replica within seconds
+# (dc1_pg_instances = 2); order writes fail only during the switchover, the Hikari pools
+# reconnect through pg-dc1-rw, and Debezium resumes from its replication slot.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: postgres-primary-kill
+  namespace: dc1-core
+spec:
+  action: pod-kill
+  mode: all
+  selector:
+    namespaces: [dc1-core]
+    labelSelectors:
+      cnpg.io/cluster: pg-dc1
+      cnpg.io/instanceRole: primary

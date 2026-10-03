@@ -1,0 +1,26 @@
+# WAN-like latency between DC2's replicator and DC1's broker. Hypothesis: replication
+# latency rises roughly by the injected delay, no data loss, no errors in DC1.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: cross-dc-latency
+  namespace: dc2-analytics
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [dc2-analytics]
+    labelSelectors:
+      platform.local/role: kafka-replicator
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces: [dc1-core]
+      labelSelectors:
+        platform.local/role: kafka-broker
+  delay:
+    latency: 250ms
+    jitter: 50ms
+    correlation: "25"
+  duration: "5m"

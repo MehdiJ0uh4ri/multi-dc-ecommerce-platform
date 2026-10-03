@@ -1,0 +1,18 @@
+# chaos-mesh 2.8.4. Experiments live in chaos/experiments and are applied by
+# scripts/chaos-demo.sh (docs/chaos-runbook.md).
+controllerManager:
+  # Only namespaces annotated chaos-mesh.org/inject=enabled (dc1-core, dc2-analytics,
+  # set by terraform/modules/dc-namespace) can be targeted.
+  enableFilterNamespace: true
+
+chaosDaemon:
+  # k3s ships its own containerd; the socket path inside a k3s node.
+  runtime: containerd
+  socketPath: /run/k3s/containerd/containerd.sock
+  # The daemon must run on the tainted DC nodes to act on their pods.
+  tolerations:
+    - operator: Exists
+
+dashboard:
+  # RBAC token login (kubectl -n chaos-mesh port-forward svc/chaos-dashboard 2333).
+  securityMode: true

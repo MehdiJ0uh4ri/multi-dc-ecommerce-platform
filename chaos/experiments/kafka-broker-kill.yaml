@@ -1,0 +1,16 @@
+# Kill the (single) DC1 Kafka broker. Hypothesis: order writes keep working (order-service
+# does not use Kafka), Debezium and MirrorMaker 2 pause and then catch up; no order event
+# is lost end to end once the broker is back (Strimzi recreates the pod, same PVC).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-broker-kill
+  namespace: dc1-core
+spec:
+  action: pod-kill
+  mode: all
+  selector:
+    namespaces: [dc1-core]
+    labelSelectors:
+      strimzi.io/cluster: kafka-dc1
+      strimzi.io/pool-name: dual-role
