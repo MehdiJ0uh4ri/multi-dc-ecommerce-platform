@@ -1,0 +1,46 @@
+# DC2 KafkaConnectors (charts/datastores, release "dc2-connectors") on connect-dc2.
+# Topics arrive through MirrorMaker 2 with their DC1 names.
+connectors:
+  # Debezium change events -> MongoDB analytics.orders (one document per order_id).
+  - name: mongo-sink-orders
+    cluster: connect-dc2
+    class: com.mongodb.kafka.connect.MongoSinkConnector
+    tasksMax: 1
+    config:
+      topics: dborder.public.orders
+      connection.uri: ${env:MONGO_DC2_URI}
+      database: analytics
+      collection: orders
+      change.data.capture.handler: com.mongodb.kafka.connect.sink.cdc.debezium.rdbms.postgres.PostgresHandler
+      errors.tolerance: all
+      errors.log.enable: true
+
+  - name: mongo-sink-products
+    cluster: connect-dc2
+    class: com.mongodb.kafka.connect.MongoSinkConnector
+    tasksMax: 1
+    config:
+      topics: dbproduct.public.product
+      connection.uri: ${env:MONGO_DC2_URI}
+      database: analytics
+      collection: products
+      change.data.capture.handler: com.mongodb.kafka.connect.sink.cdc.debezium.rdbms.postgres.PostgresHandler
+      errors.tolerance: all
+      errors.log.enable: true
+
+  # Payment events -> RabbitMQ exchange "payments" (declared by the Topology Operator,
+  # bound to queue payments.audit). Payloads are forwarded as raw strings.
+  - name: rabbitmq-sink-payments
+    cluster: connect-dc2
+    class: org.apache.camel.kafkaconnector.springrabbitmqsink.CamelSpringrabbitmqsinkSinkConnector
+    tasksMax: 1
+    config:
+      # payment-service's only producer topic (PaymentServiceImpl.save -> "SUCCESSFUL").
+      topics: SUCCESSFUL
+      key.converter: org.apache.kafka.connect.storage.StringConverter
+      value.converter: org.apache.kafka.connect.storage.StringConverter
+      camel.kamelet.spring-rabbitmq-sink.host: rabbitmq-dc2
+      camel.kamelet.spring-rabbitmq-sink.port: 5672
+      camel.kamelet.spring-rabbitmq-sink.username: ${env:RABBITMQ_DC2_USER}
+      camel.kamelet.spring-rabbitmq-sink.password: ${env:RABBITMQ_DC2_PASSWORD}
+      camel.kamelet.spring-rabbitmq-sink.exchangeName: payments

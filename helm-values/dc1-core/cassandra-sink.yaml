@@ -1,0 +1,27 @@
+# Kafka -> Cassandra sink on connect-dc1 (added to the cdc-connectors release when
+# enable_cassandra = true). Table created by the cql-bootstrap Job (datastores.yaml).
+connectors:
+  - name: cassandra-sink-orders
+    cluster: connect-dc1
+    class: com.datastax.oss.kafka.sink.CassandraSinkConnector
+    tasksMax: 1
+    config:
+      topics: dborder.public.orders
+      contactPoints: ecommerce-dc1-service
+      loadBalancing.localDc: dc1
+      port: 9042
+      auth.provider: PLAIN
+      auth.username: ${env:CASSANDRA_DC1_USER}
+      auth.password: ${env:CASSANDRA_DC1_PASSWORD}
+      # 1) rename the dotted topic (the DataStax mapping key is topic.<topic>.<ks>.<table>),
+      # 2) keep only the Debezium "after" row image.
+      transforms: rename,after
+      transforms.rename.type: org.apache.kafka.connect.transforms.RegexRouter
+      transforms.rename.regex: dborder\.public\.orders
+      transforms.rename.replacement: orders_cdc
+      transforms.after.type: org.apache.kafka.connect.transforms.ExtractField$Value
+      transforms.after.field: after
+      topic.orders_cdc.ecommerce.orders_by_id.mapping: "order_id=value.order_id, order_desc=value.order_desc, order_fee=value.order_fee, product_id=value.product_id, cart_id=value.cart_id"
+      topic.orders_cdc.ecommerce.orders_by_id.deletesEnabled: "false"
+      errors.tolerance: all
+      errors.log.enable: true
