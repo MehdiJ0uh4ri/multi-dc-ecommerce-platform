@@ -1,0 +1,84 @@
+# DC2 microservices (charts/spring-service), one Helm release per entry under `services`.
+# terraform/services-dc2.tf passes `common` then the service entry; Helm deep-merges maps.
+# Images pinned by digest: upstream only publishes :latest/:main (resolved 2026-09-18).
+
+common:
+  env:
+    SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    # Phase 6: publish http.server.requests histogram buckets (p95 latency per service).
+    MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILES_HISTOGRAM_HTTP_SERVER_REQUESTS: "true"
+    JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m -XX:+UseContainerSupport"
+    # Same issuer as DC1: tokens come from Keycloak in DC1 (allow-dc2-services-to-keycloak).
+    JWT_ISSUER_URI: http://keycloak.dc1-core.svc.cluster.local:8080/realms/ecommerce
+    KEYCLOAK_SERVER_URL: http://keycloak.dc1-core.svc.cluster.local:8080
+    POSTGRES_HOST: pg-dc2-rw
+    POSTGRES_PORT: "5432"
+  secretEnv:
+    POSTGRES_USER: { secret: pg-dc2-ecommerce, key: username }
+    POSTGRES_PASSWORD: { secret: pg-dc2-ecommerce, key: password }
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: "1", memory: 768Mi }
+
+services:
+  search-service:
+    image: { repository: ghcr.io/hoangtien2k3/search-service, digest: "sha256:97763a610b72a3c55ffc1c4be26720cefb37274430ff14a749fb7bf99d83b891" }
+    port: 8094
+    env:
+      ELASTICSEARCH_URL: http://es-dc2-es-http:9200
+      ELASTICSEARCH_USERNAME: elastic
+      # Consumes dbproduct.public.product mirrored into DC2 (ProductSyncDataConsumer).
+      KAFKA_SERVERS: kafka-dc2-kafka-bootstrap:9092
+      # ServiceUrlConfig (ecommerce.services.product): product details are fetched from
+      # product-service in DC1 (allow-dc2-search-to-product). Upstream defect: the
+      # /storefront/products-es/{id} endpoint it calls does not exist (findings #7).
+      ECOMMERCE_SERVICES_PRODUCT: http://product-service.dc1-core.svc.cluster.local:8086/product
+    secretEnv:
+      ELASTICSEARCH_PASSWORD: { secret: es-dc2-es-elastic-user, key: elastic }
+
+  rating-service:
+    image: { repository: ghcr.io/hoangtien2k3/rating-service, digest: "sha256:b62fbc8cf5d51a25bc9f973b7e3f49165afa198f37c50e884942f6fc2d6b1cca" }
+    port: 8089
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc2-rw:5432/ratingservice
+
+  favourite-service:
+    image: { repository: ghcr.io/hoangtien2k3/favourite-service, digest: "sha256:ce19364d119fe13fce5d91b4fd492f34c25858ee5fa7d7bd194b256e5d6c0a48" }
+    port: 8081
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc2-rw:5432/favouriteservice
+
+  promotion-service:
+    image: { repository: ghcr.io/hoangtien2k3/promotion-service, digest: "sha256:3720becfe84b38eed751eb43ce6a0eef4da9325506ba8c1bb67d18fadbfc9347" }
+    port: 8093
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc2-rw:5432/promotionservice
+
+  media-service:
+    image: { repository: ghcr.io/hoangtien2k3/media-service, digest: "sha256:45902778f0d00f15bbb0750f15dccaf855ad04ca8503596a428dcb709b4746a8" }
+    port: 8083
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc2-rw:5432/mediaservice
+      # RustFS (S3 API, path-style; the bucket is auto-created by common-storage).
+      STORAGE_ENDPOINT: http://rustfs-svc:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: ecommerce-media
+    secretEnv:
+      STORAGE_ACCESS_KEY: { secret: rustfs-dc2-credentials, key: RUSTFS_ACCESS_KEY }
+      STORAGE_SECRET_KEY: { secret: rustfs-dc2-credentials, key: RUSTFS_SECRET_KEY }
+
+  notification-service:
+    image: { repository: ghcr.io/hoangtien2k3/notification-service, digest: "sha256:f46ce4be5f35f44f86bc736bc72e694592fc8f1e2882083420abeaccd2bb3e27" }
+    port: 8090
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc2-rw:5432/ecommerce
+      KAFKA_SERVERS: kafka-dc2-kafka-bootstrap:9092
+      # @Value("${kafka.bootstrap.servers}") without default (same as payment-service).
+      KAFKA_BOOTSTRAP_SERVERS: kafka-dc2-kafka-bootstrap:9092
+      # Mail goes to Mailpit (SMTP sink with web UI) instead of smtp.gmail.com.
+      SPRING_MAIL_HOST: mailpit-smtp
+      SPRING_MAIL_PORT: "25"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
+      MAIL_USERNAME: noreply@ecommerce.local
+      MAIL_PASSWORD: unused
