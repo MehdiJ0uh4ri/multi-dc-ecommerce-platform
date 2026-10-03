@@ -1,0 +1,11 @@
+apiVersion: v2
+name: icinga
+description: >-
+  Icinga 2 (checks, API, notifications), Icinga DB, Icinga Web 2 and Valkey for uptime
+  checks and alerting on the platform's data stores and Kafka. Modelled on the official
+  Icinga/helm-charts icinga-stack subcharts (bootstrap init container, core config,
+  Icinga Web env), but with pinned images, PostgreSQL (CloudNativePG) instead of the
+  stack's internal mariadb:latest/redis:latest, and checks shipped as config (conf.d).
+type: application
+version: 0.1.0
+appVersion: "2.16.5"

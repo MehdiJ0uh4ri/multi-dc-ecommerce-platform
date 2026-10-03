@@ -1,0 +1,205 @@
+/*
+ * Uptime checks for the platform's data stores and Kafka, rendered by Terraform
+ * (templatefile) from the enable_* toggles and mounted as conf.d/platform.conf.
+ * Hosts are Kubernetes Services; check plugins come from monitoring-plugins in the
+ * icinga2 image. Traffic is admitted by the allow-monitoring NetworkPolicy in each DC.
+ */
+
+object User "platform-oncall" {
+  display_name = "Platform on-call"
+  email = "oncall@platform.local"
+  states = [ OK, Warning, Critical, Unknown, Up, Down ]
+  types = [ Problem, Recovery ]
+}
+
+object NotificationCommand "mail-host" {
+  command = [ "/bin/sh", "-c", "printf '%s\n' \"$$HOSTNAME is $$STATE: $$OUTPUT\" | /usr/bin/mail -s \"[icinga] $$TYPE host $$HOSTNAME $$STATE\" \"$$TO\"" ]
+  env = {
+    TYPE = "$notification.type$"
+    HOSTNAME = "$host.name$"
+    STATE = "$host.state$"
+    OUTPUT = "$host.output$"
+    TO = "$user.email$"
+  }
+}
+
+object NotificationCommand "mail-service" {
+  command = [ "/bin/sh", "-c", "printf '%s\n' \"$$SERVICE on $$HOSTNAME is $$STATE: $$OUTPUT\" | /usr/bin/mail -s \"[icinga] $$TYPE $$HOSTNAME/$$SERVICE $$STATE\" \"$$TO\"" ]
+  env = {
+    TYPE = "$notification.type$"
+    HOSTNAME = "$host.name$"
+    SERVICE = "$service.name$"
+    STATE = "$service.state$"
+    OUTPUT = "$service.output$"
+    TO = "$user.email$"
+  }
+}
+
+template Host "platform-endpoint" {
+  check_command = "tcp"
+  check_interval = 30s
+  retry_interval = 10s
+  max_check_attempts = 3
+}
+
+template Service "platform-http" {
+  check_command = "http"
+  check_interval = 30s
+  retry_interval = 10s
+  max_check_attempts = 3
+}
+
+/* ---------------- DC1 (dc1-core) ---------------- */
+
+object Host "dc1-postgresql" {
+  import "platform-endpoint"
+  address = "pg-dc1-rw.dc1-core.svc.cluster.local"
+  vars.tcp_port = 5432
+  vars.dc = "dc1"
+  vars.kind = "postgresql"
+}
+%{ if enable_kafka }
+object Host "dc1-kafka" {
+  import "platform-endpoint"
+  address = "kafka-dc1-kafka-bootstrap.dc1-core.svc.cluster.local"
+  vars.tcp_port = 9092
+  vars.dc = "dc1"
+  vars.kind = "kafka"
+}
+%{ endif }
+%{ if enable_cdc }
+object Host "dc1-kafka-connect" {
+  import "platform-endpoint"
+  address = "connect-dc1-connect-api.dc1-core.svc.cluster.local"
+  vars.tcp_port = 8083
+  vars.dc = "dc1"
+  vars.kind = "kafka-connect"
+}
+object Service "connectors" {
+  import "platform-http"
+  host_name = "dc1-kafka-connect"
+  vars.http_port = 8083
+  vars.http_uri = "/connectors"
+}
+%{ endif }
+%{ if enable_cassandra }
+object Host "dc1-cassandra" {
+  import "platform-endpoint"
+  address = "ecommerce-dc1-service.dc1-core.svc.cluster.local"
+  vars.tcp_port = 9042
+  vars.dc = "dc1"
+  vars.kind = "cassandra"
+}
+%{ endif }
+object Host "dc1-keycloak" {
+  import "platform-endpoint"
+  address = "keycloak.dc1-core.svc.cluster.local"
+  vars.tcp_port = 8080
+  vars.dc = "dc1"
+  vars.kind = "identity"
+}
+object Service "oidc-discovery" {
+  import "platform-http"
+  host_name = "dc1-keycloak"
+  vars.http_port = 8080
+  vars.http_uri = "/realms/ecommerce/.well-known/openid-configuration"
+}
+
+object Host "dc1-apisix" {
+  import "platform-endpoint"
+  address = "apisix-gateway.dc1-core.svc.cluster.local"
+  vars.tcp_port = 80
+  vars.dc = "dc1"
+  vars.kind = "gateway"
+}
+object Service "public-catalog-route" {
+  import "platform-http"
+  host_name = "dc1-apisix"
+  vars.http_port = 80
+  vars.http_uri = "/api/products"
+}
+%{ if enable_dc2 }
+/* ---------------- DC2 (dc2-analytics) ---------------- */
+
+object Host "dc2-postgresql" {
+  import "platform-endpoint"
+  address = "pg-dc2-rw.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 5432
+  vars.dc = "dc2"
+  vars.kind = "postgresql"
+}
+object Host "dc2-kafka" {
+  import "platform-endpoint"
+  address = "kafka-dc2-kafka-bootstrap.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 9092
+  vars.dc = "dc2"
+  vars.kind = "kafka"
+}
+object Host "dc2-kafka-connect" {
+  import "platform-endpoint"
+  address = "connect-dc2-connect-api.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 8083
+  vars.dc = "dc2"
+  vars.kind = "kafka-connect"
+}
+object Service "connectors" {
+  import "platform-http"
+  host_name = "dc2-kafka-connect"
+  vars.http_port = 8083
+  vars.http_uri = "/connectors"
+}
+object Host "dc2-elasticsearch" {
+  import "platform-endpoint"
+  address = "es-dc2-es-http.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 9200
+  vars.dc = "dc2"
+  vars.kind = "elasticsearch"
+}
+object Host "dc2-mongodb" {
+  import "platform-endpoint"
+  address = "mongo-dc2-svc.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 27017
+  vars.dc = "dc2"
+  vars.kind = "mongodb"
+}
+object Host "dc2-rabbitmq" {
+  import "platform-endpoint"
+  address = "rabbitmq-dc2.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 5672
+  vars.dc = "dc2"
+  vars.kind = "rabbitmq"
+}
+object Host "dc2-rustfs" {
+  import "platform-endpoint"
+  address = "rustfs-svc.dc2-analytics.svc.cluster.local"
+  vars.tcp_port = 9000
+  vars.dc = "dc2"
+  vars.kind = "object-storage"
+}
+object Service "health" {
+  import "platform-http"
+  host_name = "dc2-rustfs"
+  vars.http_port = 9000
+  vars.http_uri = "/health"
+}
+%{ endif }
+
+/* ---------------- Notifications (msmtp -> Mailpit) ---------------- */
+
+apply Notification "mail-oncall" to Host {
+  command = "mail-host"
+  users = [ "platform-oncall" ]
+  states = [ Up, Down ]
+  types = [ Problem, Recovery ]
+  interval = 30m
+  assign where host.vars.dc
+}
+
+apply Notification "mail-oncall" to Service {
+  command = "mail-service"
+  users = [ "platform-oncall" ]
+  states = [ OK, Warning, Critical, Unknown ]
+  types = [ Problem, Recovery ]
+  interval = 30m
+  assign where host.vars.dc
+}

@@ -1,0 +1,14 @@
+# charts/icinga. checks and mail.host are injected by terraform/observability.tf.
+resources:
+  icinga2:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  icingadb:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  icingaweb2:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  valkey:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 256Mi }

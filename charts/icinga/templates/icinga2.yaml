@@ -1,0 +1,187 @@
+{{- $name := printf "%s-icinga2" .Release.Name }}
+# Core config, as in icinga-stack's icinga2 subchart (_core_config.tpl), plus conf.d for the
+# platform checks mounted from its own ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+data:
+  icinga2.conf: |
+    const PluginDir = "/usr/lib/nagios/plugins"
+    const ManubulonPluginDir = "/usr/lib/nagios/plugins"
+    const PluginContribDir = "/usr/lib/nagios/plugins"
+    const NodeName = {{ .Values.nodeName | quote }}
+    const ZoneName = {{ .Values.zoneName | quote }}
+    const TicketSalt = getenv("ICINGA_TICKET_SALT")
+
+    include <itl>
+    include <plugins>
+    include <plugins-contrib>
+    include "features-enabled/*.conf"
+    include "api-users.conf"
+
+    object Endpoint NodeName {
+      host = {{ $name | quote }}
+      port = 5665
+    }
+    object Zone ZoneName {
+      endpoints = [ NodeName ]
+    }
+    object Zone "global-templates" {
+      global = true
+    }
+
+    include "conf.d/*.conf"
+  api-users.conf: |
+    object ApiUser "root" {
+      password = getenv("ICINGA_ROOT_API_PASSWORD")
+      permissions = [ "*" ]
+    }
+    // Icinga Web 2 command transport (acknowledge, reschedule, ...).
+    object ApiUser "icingaweb" {
+      password = getenv("ICINGA_ICINGAWEB_API_PASSWORD")
+      permissions = [ "actions/*", "objects/modify/*", "objects/query/*", "status/query" ]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-features
+data:
+  api.conf: |
+    object ApiListener "api" {
+      accept_commands = true
+      accept_config = false
+      ticket_salt = TicketSalt
+    }
+  checker.conf: |
+    object CheckerComponent "checker" { }
+  notification.conf: |
+    object NotificationComponent "notification" { }
+  icingadb.conf: |
+    object IcingaDB "icingadb" {
+      host = "{{ .Release.Name }}-valkey"
+      port = 6379
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-checks
+data:
+  platform.conf: |
+    {{- .Values.checks | nindent 4 }}
+---
+# msmtp is msmtp-mta's sendmail in the icinga2 image; /usr/bin/mail (mailutils) uses it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-msmtp
+data:
+  msmtprc: |
+    defaults
+    auth off
+    tls off
+    logfile -
+    account relay
+    host {{ .Values.mail.host }}
+    port {{ .Values.mail.port }}
+    from {{ .Values.mail.from }}
+    account default : relay
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    app.kubernetes.io/name: icinga2
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: api
+      port: 5665
+      targetPort: api
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: icinga2
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: icinga2
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/checks: {{ .Values.checks | sha256sum }}
+    spec:
+      securityContext:
+        fsGroup: 5665
+      # The image entrypoint initialises /data and runs "node setup" (CA + node
+      # certificates for the API) when started as PID 1 with ICINGA_MASTER=1.
+      initContainers:
+        - name: bootstrap
+          image: {{ .Values.images.icinga2 }}
+          args: ["icinga2", "daemon", "-C"]
+          env:
+            - name: ICINGA_CN
+              value: {{ .Values.nodeName | quote }}
+            - name: ICINGA_MASTER
+              value: "1"
+            - name: ICINGA_DISABLE_CONFD
+              value: "1"
+            {{- include "icinga.apiEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: icinga2
+          image: {{ .Values.images.icinga2 }}
+          command: ["icinga2", "daemon"]
+          env:
+            - name: ICINGA_DISABLE_CONFD
+              value: "1"
+            {{- include "icinga.apiEnv" . | nindent 12 }}
+          ports:
+            - name: api
+              containerPort: 5665
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/icinga2
+            - name: features
+              mountPath: /etc/icinga2/features-enabled
+            - name: checks
+              mountPath: /etc/icinga2/conf.d
+            - name: msmtp
+              mountPath: /etc/msmtprc
+              subPath: msmtprc
+          {{- with .Values.resources.icinga2 }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap: { name: {{ $name }}-config }
+        - name: features
+          configMap: { name: {{ $name }}-features }
+        - name: checks
+          configMap: { name: {{ $name }}-checks }
+        - name: msmtp
+          configMap: { name: {{ $name }}-msmtp }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

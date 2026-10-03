@@ -1,0 +1,40 @@
+images:
+  icinga2: icinga/icinga2:2.16.5
+  icingadb: icinga/icingadb:1.5.1           # CMD: icingadb --database-auto-import
+  icingaweb2: icinga/icingaweb2:2.14.0      # entrypoint imports its own DB schema
+  valkey: valkey/valkey:9.0.6-alpine        # Icinga DB's Redis-protocol store
+
+nodeName: icinga2-master
+zoneName: master
+
+# Secret with keys: ticket-salt, root, icingaweb (API user passwords).
+apiSecret: icinga-api
+
+# PostgreSQL for Icinga DB and Icinga Web 2 (CloudNativePG cluster pg-monitoring).
+database:
+  host: pg-monitoring-rw
+  port: 5432
+  secret: pg-monitoring-icinga              # basic-auth: username / password
+  icingadb: icingadb
+  icingaweb2: icingaweb2
+
+web:
+  adminUser: icingaadmin
+  adminSecret: icingaweb-admin              # key: password
+  port: 8080
+
+# SMTP relay for notifications (msmtp -> Mailpit).
+mail:
+  host: ""
+  port: 25
+  from: icinga@platform.local
+
+# Contents of conf.d/platform.conf (hosts, services, notifications), rendered by Terraform
+# from monitoring/icinga/platform.conf.tftpl.
+checks: ""
+
+resources:
+  icinga2: {}
+  icingadb: {}
+  icingaweb2: {}
+  valkey: {}

@@ -1,0 +1,138 @@
+# Valkey: the Redis-protocol store between Icinga 2 (IcingaDB feature) and Icinga DB.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: valkey, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: valkey, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: valkey
+          image: {{ .Values.images.valkey }}
+          ports:
+            - { name: redis, containerPort: 6379 }
+          {{- with .Values.resources.valkey }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-valkey
+spec:
+  selector: { app.kubernetes.io/name: valkey, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+---
+# Icinga DB: Valkey -> PostgreSQL. Env names from the icinga-stack icingadb subchart and
+# the Icinga DB 1.5 configuration docs (ICINGADB_<MODULE>_<OPTION>).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-icingadb
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: icingadb, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: icingadb, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: icingadb
+          image: {{ .Values.images.icingadb }}
+          env:
+            - { name: ICINGADB_REDIS_HOST, value: {{ printf "%s-valkey" .Release.Name | quote }} }
+            - { name: ICINGADB_REDIS_PORT, value: "6379" }
+            - { name: ICINGADB_DATABASE_TYPE, value: pgsql }
+            - { name: ICINGADB_DATABASE_HOST, value: {{ .Values.database.host | quote }} }
+            - { name: ICINGADB_DATABASE_PORT, value: {{ .Values.database.port | quote }} }
+            - { name: ICINGADB_DATABASE_DATABASE, value: {{ .Values.database.icingadb | quote }} }
+            - name: ICINGADB_DATABASE_USER
+              {{- include "icinga.dbUser" . | nindent 14 }}
+            - name: ICINGADB_DATABASE_PASSWORD
+              {{- include "icinga.dbPassword" . | nindent 14 }}
+          {{- with .Values.resources.icingadb }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+# Icinga Web 2 with the icingadb module. Settings as env (icingaweb.<ini path>), from the
+# icinga-stack icingaweb2 subchart (_icingaweb-config.tpl, _resources.tpl), with pgsql
+# resources instead of mysql. The image entrypoint imports schemas into empty DB backends.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-icingaweb2
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: icingaweb2, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: icingaweb2, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: icingaweb2
+          image: {{ .Values.images.icingaweb2 }}
+          ports:
+            - { name: http, containerPort: {{ .Values.web.port }} }
+          env:
+            - { name: icingaweb.enabledModules, value: icingadb }
+            {{- range $res := list .Values.database.icingaweb2 .Values.database.icingadb }}
+            - { name: icingaweb.resources.{{ $res }}.type, value: db }
+            - { name: icingaweb.resources.{{ $res }}.db, value: pgsql }
+            - { name: icingaweb.resources.{{ $res }}.host, value: {{ $.Values.database.host | quote }} }
+            - { name: icingaweb.resources.{{ $res }}.port, value: {{ $.Values.database.port | quote }} }
+            - { name: icingaweb.resources.{{ $res }}.dbname, value: {{ $res | quote }} }
+            - name: icingaweb.resources.{{ $res }}.username
+              {{- include "icinga.dbUser" $ | nindent 14 }}
+            - name: icingaweb.resources.{{ $res }}.password
+              {{- include "icinga.dbPassword" $ | nindent 14 }}
+            {{- end }}
+            - { name: icingaweb.authentication.icingaweb2.backend, value: db }
+            - { name: icingaweb.authentication.icingaweb2.resource, value: {{ .Values.database.icingaweb2 | quote }} }
+            - { name: icingaweb.config.global.config_resource, value: {{ .Values.database.icingaweb2 | quote }} }
+            - { name: icingaweb.groups.icingaweb2.backend, value: db }
+            - { name: icingaweb.groups.icingaweb2.resource, value: {{ .Values.database.icingaweb2 | quote }} }
+            - { name: icingaweb.roles.Administrators.users, value: {{ .Values.web.adminUser | quote }} }
+            - { name: icingaweb.roles.Administrators.permissions, value: "*" }
+            - { name: icingaweb.roles.Administrators.groups, value: Administrators }
+            - name: icingaweb.passwords.icingaweb2.{{ .Values.web.adminUser }}
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.web.adminSecret }}, key: password }
+            - { name: icingaweb.modules.icingadb.config.icingadb.resource, value: {{ .Values.database.icingadb | quote }} }
+            - { name: icingaweb.modules.icingadb.redis.redis1.host, value: {{ printf "%s-valkey" .Release.Name | quote }} }
+            - { name: icingaweb.modules.icingadb.redis.redis1.port, value: "6379" }
+            - { name: icingaweb.modules.icingadb.commandtransports.icinga2.transport, value: api }
+            - { name: icingaweb.modules.icingadb.commandtransports.icinga2.skip_validation, value: "1" }
+            - { name: icingaweb.modules.icingadb.commandtransports.icinga2.host, value: {{ printf "%s-icinga2" .Release.Name | quote }} }
+            - { name: icingaweb.modules.icingadb.commandtransports.icinga2.port, value: "5665" }
+            - { name: icingaweb.modules.icingadb.commandtransports.icinga2.username, value: icingaweb }
+            - name: icingaweb.modules.icingadb.commandtransports.icinga2.password
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.apiSecret }}, key: icingaweb }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          {{- with .Values.resources.icingaweb2 }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-icingaweb2
+spec:
+  selector: { app.kubernetes.io/name: icingaweb2, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports:
+    - { name: http, port: 80, targetPort: http }
