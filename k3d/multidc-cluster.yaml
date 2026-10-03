@@ -1,0 +1,36 @@
+# Proposed cluster for this project (not created yet). See docs/decisions.md ADR-001.
+#   k3d cluster create --config k3d/multidc-cluster.yaml
+# 1 server (control plane) + 2 agents. Phase 1 labels/taints agent-0 as DC1 and
+# agent-1 as DC2 via Terraform, so the topology stays in code, not in this file.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: multidc
+servers: 1
+agents: 2
+image: rancher/k3s:v1.35.5-k3s1
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+registries:
+  create:
+    name: registry.localhost   # container becomes k3d-registry.localhost
+    host: "0.0.0.0"
+    hostPort: "5000"
+options:
+  k3s:
+    extraArgs:
+      # Upstream app uses its own gateway (APISIX); Traefik is not needed.
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      # k3s enables only NodeRestriction by default. PodNodeSelector and
+      # PodTolerationRestriction read the namespace annotations set by
+      # terraform/modules/dc-namespace to pin each DC namespace to its node.
+      - arg: --kube-apiserver-arg=enable-admission-plugins=NodeRestriction,PodNodeSelector,PodTolerationRestriction
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
