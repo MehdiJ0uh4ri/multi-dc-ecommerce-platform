@@ -1,0 +1,64 @@
+{{- with .Values.postgres }}
+{{- if .enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .name }}
+spec:
+  instances: {{ .instances }}
+  imageName: {{ .image }}
+  inheritedMetadata:
+    labels:
+      {{ $.Values.roleLabel | quote }}: postgres
+  bootstrap:
+    initdb:
+      database: {{ .owner.database }}
+      owner: {{ .owner.role }}
+      secret:
+        name: {{ .owner.secret }}
+  {{- if or .roles .owner.replication }}
+  managed:
+    roles:
+      {{- if .owner.replication }}
+      # The initdb owner also owns the service tables, so Debezium can connect as it
+      # and create filtered publications; REPLICATION allows creating the slot.
+      - name: {{ .owner.role }}
+        ensure: present
+        login: true
+        replication: true
+        passwordSecret:
+          name: {{ .owner.secret }}
+      {{- end }}
+      {{- range .roles }}
+      - name: {{ .name }}
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ .secret }}
+      {{- end }}
+  {{- end }}
+  storage:
+    size: {{ .storage }}
+  {{- with .parameters }}
+  postgresql:
+    parameters:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- range .databases }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ $.Values.postgres.name }}-{{ .name }}
+spec:
+  name: {{ .name }}
+  owner: {{ .owner }}
+  cluster:
+    name: {{ $.Values.postgres.name }}
+{{- end }}
+{{- end }}
+{{- end }}

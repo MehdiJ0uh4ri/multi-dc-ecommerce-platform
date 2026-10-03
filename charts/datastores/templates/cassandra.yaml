@@ -1,0 +1,50 @@
+{{- with .Values.cassandra }}
+{{- if .enabled }}
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: {{ .datacenter }}
+spec:
+  clusterName: {{ .clusterName }}
+  serverType: cassandra
+  serverVersion: {{ .serverVersion | quote }}
+  size: 1
+  # In-cluster only; the operator reaches the management API over plain HTTP.
+  managementApiAuth:
+    insecure: {}
+  superuserSecretName: {{ .superuserSecret }}
+  additionalLabels:
+    {{ $.Values.roleLabel | quote }}: cassandra
+  racks:
+    - name: r1
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .storage }}
+  config:
+    jvm-server-options:
+      initial_heap_size: {{ .heap | quote }}
+      max_heap_size: {{ .heap | quote }}
+    cassandra-yaml:
+      num_tokens: 16
+      authenticator: PasswordAuthenticator
+      authorizer: CassandraAuthorizer
+      role_manager: CassandraRoleManager
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .systemLoggerResources }}
+  systemLoggerResources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .configBuilderResources }}
+  configBuilderResources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

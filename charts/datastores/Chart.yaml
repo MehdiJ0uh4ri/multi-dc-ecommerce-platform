@@ -1,0 +1,8 @@
+apiVersion: v2
+name: datastores
+description: >-
+  Operator custom resources for one simulated DC: CloudNativePG Cluster + Databases,
+  Strimzi Kafka + KafkaNodePool, cass-operator CassandraDatacenter. Every store is off
+  by default; enable per DC in helm-values/<dc>/datastores.yaml.
+type: application
+version: 0.1.0

@@ -1,0 +1,43 @@
+{{- with .Values.cassandra }}
+{{- if and .enabled .bootstrapCql }}
+{{- $cql := join "\n" .bootstrapCql }}
+# Keyspaces/tables for the Kafka -> Cassandra sink. cass-operator does not manage schema.
+# The name carries a hash of the CQL so a changed schema runs as a new Job (Job specs are
+# immutable). Waits until the CQL port answers, then applies idempotent statements.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .datacenter }}-cql-bootstrap-{{ sha256sum $cql | trunc 8 }}
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: cqlsh
+          image: k8ssandra/cass-management-api:{{ .serverVersion }}
+          command:
+            - bash
+            - -c
+            - |
+              until cqlsh "$HOST" 9042 -u "$CQL_USER" -p "$CQL_PASSWORD" -e 'SELECT release_version FROM system.local' >/dev/null 2>&1; do
+                echo "waiting for Cassandra at $HOST:9042"; sleep 10
+              done
+              cqlsh "$HOST" 9042 -u "$CQL_USER" -p "$CQL_PASSWORD" -e "$CQL"
+          env:
+            - name: HOST
+              value: {{ .clusterName }}-{{ .datacenter }}-service
+            - name: CQL
+              value: {{ $cql | quote }}
+            - name: CQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .superuserSecret }}
+                  key: username
+            - name: CQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .superuserSecret }}
+                  key: password
+{{- end }}
+{{- end }}

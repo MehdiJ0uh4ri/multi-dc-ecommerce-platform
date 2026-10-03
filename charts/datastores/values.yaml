@@ -1,0 +1,110 @@
+# Pod label consumed by terraform/network-policies.tf.
+roleLabel: platform.local/role
+
+# Set by Terraform so template edits trigger an upgrade. Not used in templates.
+chartChecksum: ""
+
+# Prometheus metrics (Phase 6): Strimzi JMX exporters (files/*.yml, from Strimzi 1.2.0
+# examples/metrics) and the Kafka Exporter for consumer-group lag. PostgreSQL (CNPG, :9187),
+# Cassandra (:9000) and RabbitMQ (:15692) expose metrics without extra config.
+metrics:
+  enabled: false
+
+postgres:
+  enabled: false
+  name: pg
+  image: ghcr.io/cloudnative-pg/postgresql:16.15-system-bookworm
+  instances: 1
+  storage: 2Gi
+  resources: {}
+  parameters: {}        # PostgreSQL GUCs; values must be strings
+  owner:                # initdb bootstrap role/database; secret is basic-auth
+    role: app
+    database: app
+    secret: ""
+    replication: false  # grant REPLICATION to the owner (needed for Debezium CDC)
+  roles: []             # extra login roles: [{name, secret}]
+  databases: []         # [{name, owner}]
+
+kafka:
+  enabled: false
+  name: kafka
+  version: 4.3.1
+  metadataVersion: 4.3-IV0
+  storage: 5Gi
+  resources: {}
+  jvmOptions: {}
+  config: {}
+  entityOperator:
+    resources: {}
+
+kafkaConnect:
+  enabled: false
+  name: connect
+  bootstrapServers: ""
+  image: ""             # build output, e.g. registry.localhost:5000/<repo>:<tag>
+  pushOptions: []       # Buildah push options, e.g. ["--tls-verify=false"]
+  config: {}
+  plugins: []           # Strimzi build plugins: [{name, artifacts: [{type, url, sha512sum}]}]
+  env: []               # connect container env (e.g. secretKeyRef for EnvVarConfigProvider)
+  resources: {}
+  jvmOptions: {}
+  buildResources: {}
+
+# KafkaConnector CRs: [{name, cluster, class, tasksMax, config}]
+connectors: []
+
+# MirrorMaker 2 into this DC's Kafka (Strimzi KafkaMirrorMaker2).
+mirrorMaker2:
+  enabled: false
+  name: mm2
+  source: { alias: source, bootstrapServers: "" }
+  target: { alias: target, bootstrapServers: "" }
+  topicsPattern: ""
+  resources: {}
+  jvmOptions: {}
+
+# Elasticsearch via ECK.
+elasticsearch:
+  enabled: false
+  name: es
+  version: 8.19.21
+  count: 1
+  storage: 10Gi
+  heap: 1g
+  resources: {}
+
+# MongoDB Community via mongodb-kubernetes.
+mongodb:
+  enabled: false
+  name: mongo
+  version: 8.0.32
+  members: 1
+  storage: 5Gi
+  users: []             # [{name, db, passwordSecret, roles: [{name, db}]}]
+  resources: {}
+
+# RabbitMQ via the Cluster Operator; topology via the Messaging Topology Operator.
+rabbitmq:
+  enabled: false
+  name: rabbitmq
+  replicas: 1
+  storage: 2Gi
+  resources: {}
+  topology:
+    exchanges: []       # [{name, type}]
+    queues: []          # [{name}]
+    bindings: []        # [{source, destination, routingKey}]
+
+cassandra:
+  enabled: false
+  clusterName: ecommerce
+  datacenter: dc
+  serverVersion: 4.1.9
+  storage: 5Gi
+  heap: 512m
+  superuserSecret: ""
+  resources: {}
+  systemLoggerResources: {}
+  configBuilderResources: {}
+  bootstrapCql: []       # idempotent CQL statements run by a Job once Cassandra answers

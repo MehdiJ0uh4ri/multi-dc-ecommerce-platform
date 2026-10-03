@@ -1,0 +1,74 @@
+{{- with .Values.kafka }}
+{{- if .enabled }}
+# Single KRaft node acting as controller + broker.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  labels:
+    strimzi.io/cluster: {{ .name }}
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .storage }}
+        kraftMetadata: shared
+        deleteClaim: false
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .jvmOptions }}
+  jvmOptions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    pod:
+      metadata:
+        labels:
+          {{ $.Values.roleLabel | quote }}: kafka-broker
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .name }}
+spec:
+  kafka:
+    version: {{ .version }}
+    metadataVersion: {{ .metadataVersion | quote }}
+    listeners:
+      # Access is controlled by terraform/network-policies.tf, not networkPolicyPeers
+      # (Strimzi policy generation is disabled in the operator).
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    {{- with .config }}
+    config:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if $.Values.metrics.enabled }}
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: {{ .name }}-metrics
+          key: metrics-config.yml
+    {{- end }}
+  {{- if $.Values.metrics.enabled }}
+  # Consumer-group lag per topic/partition (kafka_consumergroup_lag).
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+  {{- end }}
+  entityOperator:
+    topicOperator:
+      {{- toYaml (dict "resources" .entityOperator.resources) | nindent 6 }}
+{{- end }}
+{{- end }}
