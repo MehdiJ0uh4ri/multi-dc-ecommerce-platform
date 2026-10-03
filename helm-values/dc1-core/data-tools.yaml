@@ -1,0 +1,49 @@
+# Phase 4.5 data layer (charts/data-tools, release "data-tools" in dc1-core).
+# terraform/data-tools.tf sets image.tag (data-tools/VERSION), the enable toggles,
+# seedOrders.dataChecksum and metrics.enabled. Design: docs/data-layer.md.
+
+platform:
+  # In-cluster names already used by the verify scripts: APISIX's ClusterIP Service and
+  # the "keycloak" alias Service (terraform/gateway-identity-dc1.tf).
+  gatewayUrl: http://apisix-gateway
+  keycloakUrl: http://keycloak:8080
+  kafkaBootstrap: kafka-dc1-kafka-bootstrap:9092
+  # APISIX global limit-count: 1200 requests / 60 s per client address = 20/s per pod.
+  maxRps: 15
+
+seedProducts:
+  env:
+    SEED_PRODUCTS_LIMIT: "0"          # 0 = the whole DummyJSON catalogue (194 products)
+  rootCategory:
+    # Same image as pg-dc1 (helm-values/dc1-core/datastores.yaml): already on the node, has psql.
+    postgresImage: ghcr.io/cloudnative-pg/postgresql:16.15-system-bookworm
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+seedOrders:
+  env:
+    SEED_TIME_COMPRESSION: "720"      # one Olist day replays in 2 minutes
+    SEED_WORKERS: "6"
+    SEED_ORDERS_LIMIT: "0"            # 0 = every order in the prepared file
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 384Mi }
+
+loadgen:
+  replicas: 1
+  # Everything the generator does is tunable here; see data-tools/loadgen/loadgen.py.
+  env:
+    LOADGEN_RATE: "1.0"               # mean scenario arrivals per second (Poisson)
+    LOADGEN_FRAUD_RATIO: "0.05"
+    LOADGEN_FRAUD_MIX: "rapid_repeat=1,geo_mismatch=1,high_value_new_account=1"
+    LOADGEN_USERS: "50"
+    LOADGEN_PAY_RATIO: "0.9"
+    LOADGEN_COUNTRIES: "FR=40,DE=20,ES=15,IT=10,NL=5,BE=5,PT=5"
+    RAPID_REPEAT_COUNT: "6"
+    RAPID_REPEAT_WINDOW_S: "20"
+    HIGH_VALUE_MULTIPLIER: "20"
+    HIGH_VALUE_MIN_FEE: "2000"
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 256Mi }

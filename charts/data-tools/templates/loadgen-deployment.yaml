@@ -1,0 +1,53 @@
+{{- if .Values.loadgen.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels:
+    app.kubernetes.io/name: loadgen
+    app.kubernetes.io/part-of: data-tools
+spec:
+  replicas: {{ .Values.loadgen.replicas }}
+  # Never two generators at once during a rollout: the offered load would double.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loadgen
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loadgen
+        app.kubernetes.io/part-of: data-tools
+        {{ .Values.roleLabel | quote }}: load-generator
+      annotations:
+        checksum/chart: {{ .Values.chartChecksum | quote }}
+    spec:
+      {{- include "data-tools.podSecurity" . | nindent 6 }}
+      # SIGTERM stops new arrivals; in-flight scenarios (a rapid_repeat burst lasts
+      # RAPID_REPEAT_WINDOW_S) finish and order-context events are flushed.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: loadgen
+          image: {{ include "data-tools.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "loadgen/loadgen.py", "run"]
+          {{- include "data-tools.containerSecurity" . | nindent 10 }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+          env:
+            {{- include "data-tools.platformEnv" . | nindent 12 }}
+            {{- include "data-tools.shopperEnv" . | nindent 12 }}
+            - name: METRICS_PORT
+              value: {{ .Values.metrics.port | quote }}
+            {{- include "data-tools.extraEnv" .Values.loadgen.env | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: 10
+          {{- with .Values.loadgen.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

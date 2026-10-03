@@ -1,0 +1,52 @@
+# Defaults; the DC1 settings live in helm-values/dc1-core/data-tools.yaml and
+# terraform/data-tools.tf sets image.tag, the toggles and the checksums.
+image:
+  repository: registry.localhost:5000/platform/data-tools
+  tag: ""                     # data-tools/VERSION
+  pullPolicy: IfNotPresent
+
+roleLabel: platform.local/role
+
+platform:
+  gatewayUrl: http://apisix-gateway
+  keycloakUrl: http://keycloak:8080
+  realm: ecommerce
+  publicClientId: ecommerce-client
+  kafkaBootstrap: kafka-dc1-kafka-bootstrap:9092
+  orderContextTopic: order-context
+  orderContextEnabled: true
+  maxRps: 15
+
+secrets:
+  seederClient: data-tools-seeder-client   # client_id, client_secret
+  users: data-tools-users                  # password
+
+seedProducts:
+  enabled: true
+  env: {}
+  rootCategory:
+    title: All
+    postgresImage: ""
+    host: pg-dc1-rw
+    database: productservice
+    secret: pg-dc1-ecommerce
+  resources: {}
+
+seedOrders:
+  enabled: false
+  configMap: olist-replay
+  dataChecksum: ""
+  env: {}
+  resources: {}
+
+loadgen:
+  enabled: true
+  replicas: 1
+  env: {}
+  resources: {}
+
+metrics:
+  enabled: false
+  port: 9000
+
+chartChecksum: ""

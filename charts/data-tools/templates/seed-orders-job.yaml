@@ -1,0 +1,46 @@
+{{- if .Values.seedOrders.enabled }}
+{{- $spec := dict "tag" .Values.image.tag "env" .Values.seedOrders.env "data" (required "seedOrders.dataChecksum is required" .Values.seedOrders.dataChecksum) "chart" .Values.chartChecksum }}
+# Olist replay (data-tools/seed/seed_orders.py replay). Not idempotent: every run places
+# new orders, so it never retries (backoffLimit 0) and only a changed replay file, image
+# or setting (the hash in the name) starts another run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-orders-{{ toJson $spec | sha256sum | trunc 8 }}
+  labels:
+    app.kubernetes.io/name: seed-orders
+    app.kubernetes.io/part-of: data-tools
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: seed-orders
+        app.kubernetes.io/part-of: data-tools
+        {{ .Values.roleLabel | quote }}: data-seeder
+    spec:
+      restartPolicy: Never
+      {{- include "data-tools.podSecurity" . | nindent 6 }}
+      containers:
+        - name: seed-orders
+          image: {{ include "data-tools.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "seed/seed_orders.py", "replay"]
+          {{- include "data-tools.containerSecurity" . | nindent 10 }}
+          env:
+            {{- include "data-tools.platformEnv" . | nindent 12 }}
+            {{- include "data-tools.shopperEnv" . | nindent 12 }}
+            - name: REPLAY_FILE
+              value: /data/olist-replay.jsonl.gz
+            {{- include "data-tools.extraEnv" .Values.seedOrders.env | nindent 12 }}
+          volumeMounts:
+            - { name: replay, mountPath: /data, readOnly: true }
+          {{- with .Values.seedOrders.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: replay
+          configMap:
+            name: {{ .Values.seedOrders.configMap }}
+{{- end }}

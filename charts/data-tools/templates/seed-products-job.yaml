@@ -1,0 +1,81 @@
+{{- if .Values.seedProducts.enabled }}
+{{- $spec := dict "tag" .Values.image.tag "env" .Values.seedProducts.env "root" .Values.seedProducts.rootCategory "chart" .Values.chartChecksum }}
+# DummyJSON catalogue -> APISIX -> product-service, as the platform-seeder service account.
+# Idempotent (categories by title, products by SKU). The name carries a hash of its inputs:
+# Job specs are immutable, so a changed image or setting runs as a new Job.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-products-{{ toJson $spec | sha256sum | trunc 8 }}
+  labels:
+    app.kubernetes.io/name: seed-products
+    app.kubernetes.io/part-of: data-tools
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: seed-products
+        app.kubernetes.io/part-of: data-tools
+        {{ .Values.roleLabel | quote }}: data-seeder
+    spec:
+      restartPolicy: Never
+      {{- include "data-tools.podSecurity" . | nindent 6 }}
+      initContainers:
+        # product-service cannot create a category without a parent (upstream finding #11),
+        # so the root category is inserted directly once product-service has created its
+        # tables (SPRING_JPA_HIBERNATE_DDL_AUTO=update). No-op when it already exists.
+        - name: root-category
+          image: {{ required "seedProducts.rootCategory.postgresImage is required" .Values.seedProducts.rootCategory.postgresImage | quote }}
+          {{- include "data-tools.containerSecurity" . | nindent 10 }}
+          command:
+            - bash
+            - -c
+            - |
+              until [ "$(psql -tAc "SELECT to_regclass('public.categories') IS NOT NULL")" = t ]; do
+                echo "waiting for product-service to create public.categories"; sleep 10
+              done
+              psql -v ON_ERROR_STOP=1 -v title="$ROOT_CATEGORY" <<'SQL'
+              INSERT INTO categories (category_title, created_at, updated_at)
+              SELECT :'title', now(), now()
+              WHERE NOT EXISTS (
+                SELECT 1 FROM categories WHERE category_title = :'title' AND parent_category_id IS NULL);
+              SQL
+          env:
+            - name: PGHOST
+              value: {{ .Values.seedProducts.rootCategory.host | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.seedProducts.rootCategory.database | quote }}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.seedProducts.rootCategory.secret }}, key: username }
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.seedProducts.rootCategory.secret }}, key: password }
+            - name: ROOT_CATEGORY
+              value: {{ .Values.seedProducts.rootCategory.title | quote }}
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+      containers:
+        - name: seed-products
+          image: {{ include "data-tools.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "seed/seed_products.py"]
+          {{- include "data-tools.containerSecurity" . | nindent 10 }}
+          env:
+            {{- include "data-tools.platformEnv" . | nindent 12 }}
+            - name: ROOT_CATEGORY
+              value: {{ .Values.seedProducts.rootCategory.title | quote }}
+            - name: SEEDER_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secrets.seederClient }}, key: client_id }
+            - name: SEEDER_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secrets.seederClient }}, key: client_secret }
+            {{- include "data-tools.extraEnv" .Values.seedProducts.env | nindent 12 }}
+          {{- with .Values.seedProducts.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

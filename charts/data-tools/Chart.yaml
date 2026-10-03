@@ -1,0 +1,8 @@
+apiVersion: v2
+name: data-tools
+description: >-
+  Phase 4.5 data layer: seed-products and seed-orders Jobs and the loadgen Deployment,
+  all from one image (data-tools/). Runs in dc1-core and talks to the platform only
+  through APISIX, Keycloak and kafka-dc1.
+type: application
+version: 0.1.0
