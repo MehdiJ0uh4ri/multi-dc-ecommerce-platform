@@ -1,0 +1,7 @@
+# eck-operator chart 3.5.0: manages the Elasticsearch in dc2-analytics (and Kibana in Phase 6).
+installCRDs: true
+managedNamespaces: []   # all namespaces; ECK's own RBAC is cluster-scoped
+
+resources:
+  requests: { cpu: 100m, memory: 150Mi }
+  limits: { cpu: "1", memory: 1Gi }

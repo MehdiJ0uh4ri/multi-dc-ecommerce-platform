@@ -1,0 +1,10 @@
+apiVersion: v2
+name: rabbitmq-cluster-operator
+description: >-
+  Vendored, unmodified RabbitMQ Cluster Operator release manifest (upstream ships no Helm
+  chart). Source: https://github.com/rabbitmq/cluster-operator/releases/download/v2.23.0/cluster-operator.yml
+  sha256 e99f04f46ecbf796b63c0f0e295bbae3d2aee3742897944cd1810cfcc44856ce.
+  Creates its own namespace rabbitmq-system and uses cert-manager for webhook certs.
+type: application
+version: 2.23.0
+appVersion: 2.23.0

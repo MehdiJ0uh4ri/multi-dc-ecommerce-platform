@@ -1,0 +1,8 @@
+# cert-manager chart v1.21.2. Issues the webhook serving certificates of cass-operator and
+# the RabbitMQ Cluster/Topology Operators (their manifests ship Issuer + Certificate).
+crds:
+  enabled: true
+
+resources:
+  requests: { cpu: 20m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 256Mi }

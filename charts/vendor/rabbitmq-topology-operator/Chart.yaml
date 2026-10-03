@@ -1,0 +1,9 @@
+apiVersion: v2
+name: rabbitmq-topology-operator
+description: >-
+  Vendored, unmodified RabbitMQ Messaging Topology Operator release manifest (cert-manager
+  variant). Source: https://github.com/rabbitmq/messaging-topology-operator/releases/download/v1.20.3/messaging-topology-operator-with-certmanager.yaml
+  sha256 73a45a423b3abb9dddfa84248e60699f69a4dbcf3456830b9af62ef496e1e549.
+type: application
+version: 1.20.3
+appVersion: 1.20.3

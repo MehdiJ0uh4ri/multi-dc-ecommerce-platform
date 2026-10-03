@@ -1,0 +1,5 @@
+# mongodb-kubernetes chart 1.12.0: only the MongoDB Community part is used.
+# operator.watchNamespace is injected by terraform/operators.tf (dc2-analytics).
+operator:
+  watchedResources:
+    - mongodbcommunity
