@@ -1,0 +1,20 @@
+# strimzi-kafka-operator 1.2.0. watchNamespaces is injected by terraform/operators.tf.
+
+# Default 300000 (5 min). The Kafka Connect build pod pulls the ~600 MB Strimzi Kafka
+# base image plus plugins; on this network that alone exceeded 5 min, and each retry
+# starts a fresh build pod ("Exceeded timeout of 300000ms ... connect-build").
+operationTimeoutMs: 1800000
+# The Connect build wait has its own limit (STRIMZI_CONNECT_BUILD_TIMEOUT_MS, default
+# 300000); operationTimeoutMs alone did not stop the "Exceeded timeout of 300000ms" loop.
+connectBuildTimeoutMs: 1800000
+
+resources:
+  requests: { cpu: 100m, memory: 384Mi }
+  limits: { cpu: "1", memory: 384Mi }
+
+extraEnvs:
+  # NetworkPolicies are owned by Terraform (terraform/network-policies.tf, ADR-012).
+  # Strimzi's generated policy opens client listeners to every namespace unless
+  # networkPolicyPeers are duplicated in each Kafka CR.
+  - name: STRIMZI_NETWORK_POLICY_GENERATION
+    value: "false"

@@ -1,0 +1,8 @@
+# cloudnative-pg chart 0.29.0 (operator 1.30.0). Webhook certificates are managed by
+# the operator itself; no cert-manager needed.
+config:
+  clusterWide: true
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 256Mi }

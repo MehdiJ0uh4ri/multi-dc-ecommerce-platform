@@ -1,0 +1,12 @@
+# cass-operator chart 0.67.1 (operator 1.32.0).
+global:
+  clusterScoped: true   # watch CassandraDatacenters in all namespaces (dc1-core, later dc2-analytics)
+
+# Webhooks need cert-manager (templates/deployment.yaml fails the render otherwise).
+# cert-manager is installed since Phase 4 (ADR-015), so validation is on.
+admissionWebhooks:
+  enabled: true
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 256Mi }
