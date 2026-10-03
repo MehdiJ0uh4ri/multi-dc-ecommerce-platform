@@ -1,0 +1,8 @@
+# cp terraform.tfvars.example terraform.tfvars
+kubeconfig_path = "~/.kube/config"
+kube_context    = "k3d-multidc"
+
+dc_nodes = {
+  dc1 = "k3d-multidc-agent-0"
+  dc2 = "k3d-multidc-agent-1"
+}
