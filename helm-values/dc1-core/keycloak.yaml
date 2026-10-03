@@ -1,0 +1,70 @@
+# codecentric keycloakx chart 7.3.1 (Keycloak 26.7.3), backed by pg-dc1.
+fullnameOverride: keycloak
+
+command:
+  - /opt/keycloak/bin/kc.sh
+  - start
+  - --http-port=8080
+  # Fixed issuer for every token, whichever URL a client used. Services in both DCs
+  # set JWT_ISSUER_URI to this value; the "keycloak" alias Service makes it resolvable.
+  - --hostname=http://keycloak.dc1-core.svc.cluster.local:8080
+  - --health-enabled=true
+  # Realm, client "ecommerce-client" and test users from app/docker/keycloak/import.
+  - --import-realm
+
+http:
+  relativePath: "/"
+
+# "default" makes the chart set KC_CACHE=ispn + jdbc-ping clustering. Single replica:
+# "custom" disables that and extraEnv sets KC_CACHE=local.
+cache:
+  stack: custom
+
+database:
+  vendor: postgres
+  hostname: pg-dc1-rw
+  port: 5432
+  database: keycloak
+  username: keycloak
+  existingSecret: pg-dc1-keycloak
+  existingSecretKey: password
+
+extraEnv: |
+  - name: KC_CACHE
+    value: local
+  - name: KC_BOOTSTRAP_ADMIN_USERNAME
+    value: admin
+  - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-admin
+        key: password
+
+extraVolumes: |
+  - name: realm-import
+    configMap:
+      name: keycloak-realm
+
+extraVolumeMounts: |
+  - name: realm-import
+    mountPath: /opt/keycloak/data/import
+    readOnly: true
+
+podLabels:
+  platform.local/role: keycloak
+
+# Chart default allows 15s + 60x5s. First boot (DB schema creation + realm import) on
+# this host took longer and the container was restarted mid-migration.
+startupProbe: |
+  httpGet:
+    path: '/health'
+    port: '{{ .Values.http.internalPort }}'
+    scheme: '{{ .Values.http.internalScheme }}'
+  initialDelaySeconds: 15
+  timeoutSeconds: 2
+  failureThreshold: 120
+  periodSeconds: 5
+
+resources:
+  requests: { cpu: 100m, memory: 512Mi }
+  limits: { cpu: "1", memory: 1Gi }
