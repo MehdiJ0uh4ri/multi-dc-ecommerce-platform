@@ -1,0 +1,54 @@
+# fluent-bit chart 0.58.2 (Fluent Bit 5.1.2): ships every container log from every node
+# (both DCs included) to the ECK Elasticsearch "es-logs" in namespace logging.
+kind: DaemonSet
+
+# DC nodes are tainted; the log shipper must run everywhere.
+tolerations:
+  - operator: Exists
+
+env:
+  - name: ES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: es-logs-es-elastic-user   # created by ECK for Elasticsearch "es-logs"
+        key: elastic
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 256Mi }
+
+config:
+  # Container logs only: k3d nodes have no systemd journal for the chart's default
+  # kubelet.service input.
+  inputs: |
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*.log
+        multiline.parser docker, cri
+        Tag kube.*
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+
+  filters: |
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+  outputs: |
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host es-logs-es-http.logging.svc.cluster.local
+        Port 9200
+        HTTP_User elastic
+        HTTP_Passwd ${ES_PASSWORD}
+        Logstash_Format On
+        Logstash_Prefix k8s
+        Suppress_Type_Name On
+        Replace_Dots On
+        Trace_Error On
+        Retry_Limit False

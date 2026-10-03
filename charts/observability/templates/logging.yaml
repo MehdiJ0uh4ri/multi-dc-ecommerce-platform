@@ -1,0 +1,66 @@
+{{- with .Values.logging }}
+{{- if .enabled }}
+# Log store for Fluent Bit (Phase 6). Separate from the DC2 search Elasticsearch so that
+# log volume can never affect product search. HTTP TLS off, auth on (Secret
+# <name>-es-elastic-user, key "elastic").
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+spec:
+  version: {{ .version | quote }}
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true
+  nodeSets:
+    - name: default
+      count: {{ .count }}
+      config:
+        node.store.allow_mmap: false
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-Xms{{ .heap }} -Xmx{{ .heap }}"
+              {{- with .resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: {{ .storage }}
+---
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: kibana
+  namespace: {{ .namespace }}
+spec:
+  version: {{ .version | quote }}
+  count: 1
+  elasticsearchRef:
+    name: {{ .name }}
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true
+  {{- with .kibana.resources }}
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            {{- toYaml . | nindent 12 }}
+  {{- end }}
+{{- end }}
+{{- end }}
