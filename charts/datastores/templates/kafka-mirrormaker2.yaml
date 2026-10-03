@@ -1,0 +1,63 @@
+{{- with .Values.mirrorMaker2 }}
+{{- if .enabled }}
+# MirrorMaker 2 runs next to the target cluster and pulls from the source DC.
+# IdentityReplicationPolicy keeps topic names unchanged, so consumers in the target DC
+# use the same names as in the source (e.g. search-service's dbproduct.public.product).
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaMirrorMaker2
+metadata:
+  name: {{ .name }}
+spec:
+  version: {{ $.Values.kafka.version }}
+  replicas: 1
+  target:
+    alias: {{ .target.alias }}
+    bootstrapServers: {{ .target.bootstrapServers }}
+    groupId: {{ .name }}
+    configStorageTopic: {{ .name }}-configs
+    offsetStorageTopic: {{ .name }}-offsets
+    statusStorageTopic: {{ .name }}-status
+    config:
+      config.storage.replication.factor: -1
+      offset.storage.replication.factor: -1
+      status.storage.replication.factor: -1
+  mirrors:
+    - source:
+        alias: {{ .source.alias }}
+        bootstrapServers: {{ .source.bootstrapServers }}
+      sourceConnector:
+        tasksMax: 1
+        autoRestart:
+          enabled: true
+        config:
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+          replication.factor: -1
+          offset-syncs.topic.replication.factor: -1
+          offset-syncs.topic.location: target
+          sync.topic.acls.enabled: "false"
+          refresh.topics.interval.seconds: 30
+      topicsPattern: {{ .topicsPattern | quote }}
+  {{- if $.Values.metrics.enabled }}
+  metricsConfig:
+    type: jmxPrometheusExporter
+    valueFrom:
+      configMapKeyRef:
+        name: {{ .name }}-metrics
+        key: metrics-config.yml
+  {{- end }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .jvmOptions }}
+  jvmOptions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    pod:
+      metadata:
+        labels:
+          # Admitted into the source DC's Kafka by allow-dc2-replicator-to-kafka.
+          {{ $.Values.roleLabel | quote }}: kafka-replicator
+{{- end }}
+{{- end }}
