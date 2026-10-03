@@ -1,0 +1,9 @@
+# Pinned tool versions. Checked against upstream release endpoints on 2026-09-15.
+tools_bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+tools_arch: amd64
+
+terraform_version: "1.16.2"
+kubectl_version: "1.35.8"   # matches k3s v1.35.x
+helm_version: "4.3.0"
+k3d_version: "5.9.0"
+k3d_sha256: "06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0"   # k3d-linux-amd64, from release checksums.txt

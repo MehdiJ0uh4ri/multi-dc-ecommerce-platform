@@ -1,0 +1,84 @@
+# Installs pinned terraform / kubectl / helm / k3d into ~/.local/bin (no sudo).
+#   ansible-playbook playbooks/bootstrap-tools.yml
+- name: Install pinned CLI tools for multi-dc-platform
+  hosts: localhost
+  gather_facts: true
+  vars:
+    tools_cache_dir: "{{ ansible_env.HOME }}/.cache/multi-dc-platform/tools"
+  tasks:
+    - name: Ensure bin and cache directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ tools_bin_dir }}"
+        - "{{ tools_cache_dir }}"
+
+    # --- terraform -----------------------------------------------------------
+    - name: Download terraform {{ terraform_version }}
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_{{ tools_arch }}.zip"
+        dest: "{{ tools_cache_dir }}/terraform_{{ terraform_version }}.zip"
+        checksum: "sha256:https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_SHA256SUMS"
+        mode: "0644"
+
+    - name: Extract terraform
+      ansible.builtin.unarchive:
+        src: "{{ tools_cache_dir }}/terraform_{{ terraform_version }}.zip"
+        dest: "{{ tools_cache_dir }}"
+        include: [terraform]
+        remote_src: true
+        creates: "{{ tools_cache_dir }}/terraform"
+
+    - name: Install terraform
+      ansible.builtin.copy:
+        src: "{{ tools_cache_dir }}/terraform"
+        dest: "{{ tools_bin_dir }}/terraform"
+        mode: "0755"
+        remote_src: true
+
+    # --- kubectl -------------------------------------------------------------
+    - name: Install kubectl {{ kubectl_version }}
+      ansible.builtin.get_url:
+        url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ tools_arch }}/kubectl"
+        dest: "{{ tools_bin_dir }}/kubectl"
+        checksum: "sha256:https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ tools_arch }}/kubectl.sha256"
+        mode: "0755"
+
+    # --- helm ----------------------------------------------------------------
+    - name: Download helm {{ helm_version }}
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ tools_arch }}.tar.gz"
+        dest: "{{ tools_cache_dir }}/helm-v{{ helm_version }}.tar.gz"
+        checksum: "sha256:https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ tools_arch }}.tar.gz.sha256sum"
+        mode: "0644"
+
+    - name: Extract helm
+      ansible.builtin.unarchive:
+        src: "{{ tools_cache_dir }}/helm-v{{ helm_version }}.tar.gz"
+        dest: "{{ tools_cache_dir }}"
+        remote_src: true
+        creates: "{{ tools_cache_dir }}/linux-{{ tools_arch }}/helm"
+
+    - name: Install helm
+      ansible.builtin.copy:
+        src: "{{ tools_cache_dir }}/linux-{{ tools_arch }}/helm"
+        dest: "{{ tools_bin_dir }}/helm"
+        mode: "0755"
+        remote_src: true
+
+    # --- k3d -----------------------------------------------------------------
+    # k3d's checksums.txt lists "_dist/k3d-linux-amd64", which get_url cannot
+    # match by filename, so the digest is pinned in group_vars instead.
+    - name: Install k3d {{ k3d_version }}
+      ansible.builtin.get_url:
+        url: "https://github.com/k3d-io/k3d/releases/download/v{{ k3d_version }}/k3d-linux-{{ tools_arch }}"
+        dest: "{{ tools_bin_dir }}/k3d"
+        checksum: "sha256:{{ k3d_sha256 }}"
+        mode: "0755"
+
+    - name: Warn if bin dir is not on PATH
+      ansible.builtin.debug:
+        msg: "Add {{ tools_bin_dir }} to your PATH."
+      when: tools_bin_dir not in ansible_env.PATH.split(':')
