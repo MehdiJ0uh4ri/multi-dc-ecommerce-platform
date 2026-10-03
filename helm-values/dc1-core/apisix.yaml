@@ -1,0 +1,37 @@
+# apache/apisix chart 2.17.0 (APISIX 3.18.0), standalone mode: routes come from the
+# apisix-routes ConfigMap (app/deploy/apisix/apisix.yaml), no etcd, no Admin API.
+etcd:
+  enabled: false
+
+service:
+  # In-cluster access only (apisix-gateway:80). External access is a separate
+  # LoadBalancer Service owned by Terraform (kubernetes_service_v1.apisix_external in
+  # terraform/gateway-identity-dc1.tf). It needs a servicelb toleration annotation at
+  # creation time, and chart 2.17.0 renders service annotations as invalid YAML.
+  type: ClusterIP
+  # The chart always renders `externalTrafficPolicy` (default "Cluster"), which the API
+  # rejects on a ClusterIP Service. Empty renders as null and the field is dropped.
+  externalTrafficPolicy: ""
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 9080
+  # The chart has no podLabels; labelsOverride replaces its selector labels, which
+  # also label the pods. Adds the role used by terraform/network-policies.tf.
+  labelsOverride:
+    app.kubernetes.io/name: apisix
+    app.kubernetes.io/instance: apisix
+    platform.local/role: api-gateway
+
+apisix:
+  admin:
+    enabled: false
+  deployment:
+    mode: standalone
+    role: data_plane
+    standalone:
+      existingConfigMap: apisix-routes
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: "1", memory: 512Mi }
