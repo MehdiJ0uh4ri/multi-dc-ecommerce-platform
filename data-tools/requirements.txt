@@ -1,0 +1,5 @@
+# Shared by seed/ and loadgen/ (one image, data-tools/Dockerfile). Versions checked on PyPI 2026-09-18.
+confluent-kafka==2.15.1     # order-context producer (bundles librdkafka in the manylinux wheel)
+Faker==40.39.0              # synthetic shoppers (pt_BR for Olist)
+prometheus-client==0.26.0   # loadgen /metrics
+requests==2.34.2            # APISIX / Keycloak calls

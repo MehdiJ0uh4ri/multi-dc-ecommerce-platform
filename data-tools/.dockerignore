@@ -1,0 +1,4 @@
+# The Olist dataset never goes into the image (CC BY-NC-SA 4.0): Terraform ships the
+# prepared replay file as a ConfigMap instead.
+data/
+**/__pycache__/
