@@ -2,6 +2,12 @@
 
 A production-style data and infrastructure platform on a local k3d cluster. Two Kubernetes namespaces play the part of two datacenters: `dc1-core` handles transactions and `dc2-analytics` handles analytics and reads. The application layer is [hoangtien2k3/ecommerce-microservices](https://github.com/hoangtien2k3/ecommerce-microservices), vendored as a submodule under `app/`.
 
+## Architecture
+
+![Multi-DC e-commerce platform](docs/diagrams/multi-dc-ecom-platform.jpg)
+
+The editable source is [docs/diagrams/multi-dc-platform.drawio](docs/diagrams/multi-dc-platform.drawio). You can open it with [draw.io](https://app.diagrams.net) or the VS Code Draw.io extension.
+
 | Dir            | Owns                                                                    |
 |----------------|-------------------------------------------------------------------------|
 | `terraform/`   | Every Kubernetes object and Helm release (providers use the k3d kubeconfig) |
