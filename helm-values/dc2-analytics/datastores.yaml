@@ -1,0 +1,162 @@
+# DC2 (analytics/read side) data stores, rendered by charts/datastores.
+
+postgres:
+  enabled: true
+  name: pg-dc2
+  storage: 5Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 1Gi }
+  parameters:
+    max_connections: "200"
+    shared_buffers: "128MB"
+  owner:
+    role: ecommerce
+    database: ecommerce            # notification-service uses the "ecommerce" database
+    secret: pg-dc2-ecommerce       # terraform/datastores-dc2.tf
+  # DC2 services (ADR-006). Names from app/docker/postgres/init/create-all-databases.sql.
+  databases:
+    - { name: favouriteservice, owner: ecommerce }
+    - { name: ratingservice, owner: ecommerce }
+    - { name: mediaservice, owner: ecommerce }
+    - { name: promotionservice, owner: ecommerce }
+
+# Target cluster for MirrorMaker 2 and source for the DC2 sink connectors.
+kafka:
+  enabled: true
+  name: kafka-dc2
+  storage: 10Gi
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { cpu: "2", memory: 2Gi }
+  jvmOptions:
+    "-Xms": 1g
+    "-Xmx": 1g
+  config:
+    offsets.topic.replication.factor: 1
+    transaction.state.log.replication.factor: 1
+    transaction.state.log.min.isr: 1
+    default.replication.factor: 1
+    min.insync.replicas: 1
+    auto.create.topics.enable: true
+  entityOperator:
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+# Replicates DC1 business topics into kafka-dc2 with unchanged names (ADR-020).
+mirrorMaker2:
+  enabled: true
+  name: mm2-dc1-to-dc2
+  source:
+    alias: dc1
+    bootstrapServers: kafka-dc1-kafka-bootstrap.dc1-core.svc.cluster.local:9092
+  target:
+    alias: dc2
+    bootstrapServers: kafka-dc2-kafka-bootstrap:9092
+  # Debezium CDC (products, orders) and the events the upstream app actually produces:
+  # payment-service publishes to "SUCCESSFUL" (KafkaConstant.STATUS_PAYMENT_SUCCESSFUL);
+  # paymentCreated/paymentCompleted are declared constants that nothing produces.
+  # order-context: platform-owned checkout context from data-tools (ADR-030).
+  topicsPattern: "dbproduct\\..*|dborder\\..*|SUCCESSFUL|profileOnboard(ing|ed)|order-context"
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { cpu: "1", memory: 1Gi }
+  jvmOptions:
+    "-Xms": 512m
+    "-Xmx": 512m
+
+# Sink connectors: Kafka -> MongoDB (analytics copies), Kafka -> RabbitMQ (payment fan-out).
+kafkaConnect:
+  enabled: true
+  name: connect-dc2
+  bootstrapServers: kafka-dc2-kafka-bootstrap:9092
+  image: registry.localhost:5000/platform/kafka-connect-dc2-sinks:mongo-3.1.0-camel-4.18.0-kafka-4.3.1
+  pushOptions: ["--tls-verify=false"]
+  config:
+    config.storage.replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: false
+    value.converter.schemas.enable: false
+    config.providers: env
+    config.providers.env.class: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+  plugins:
+    - name: mongo-kafka-connect
+      artifacts:
+        - type: jar
+          url: https://repo1.maven.org/maven2/org/mongodb/kafka/mongo-kafka-connect/3.1.0/mongo-kafka-connect-3.1.0-all.jar
+          sha512sum: 193effc7f20232c2f54dd379cfefc76a2c0f7a26881c2a3b57bb1eef260b0924502a5ef96adcc248a6b0ff261bcd76b8587e7998facfd5e833dcf10e1f56ca51
+    - name: camel-spring-rabbitmq-sink
+      artifacts:
+        - type: tgz
+          url: https://repo1.maven.org/maven2/org/apache/camel/kafkaconnector/camel-spring-rabbitmq-sink-kafka-connector/4.18.0/camel-spring-rabbitmq-sink-kafka-connector-4.18.0-package.tar.gz
+          sha512sum: f11b8ce61cf8b3bac2d11b37da4efa531c6467f053dd4898bb4fd31d1f56ac4e3607ebf924957315feee395c1a9d071fe0af624a21829e794d0c112af56ff375
+  env:
+    - name: MONGO_DC2_URI
+      valueFrom:
+        secretKeyRef: { name: mongo-dc2-admin-analytics, key: connectionString.standard }
+    - name: RABBITMQ_DC2_USER
+      valueFrom:
+        secretKeyRef: { name: rabbitmq-dc2-default-user, key: username }
+    - name: RABBITMQ_DC2_PASSWORD
+      valueFrom:
+        secretKeyRef: { name: rabbitmq-dc2-default-user, key: password }
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { cpu: "2", memory: 1Gi }
+  jvmOptions:
+    "-Xms": 512m
+    "-Xmx": 512m
+  buildResources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+
+# Product search index for search-service (ELASTICSEARCH_URL http://es-dc2-es-http:9200).
+elasticsearch:
+  enabled: true
+  name: es-dc2
+  version: 8.19.21                 # 8.x: search-service ships the 8.15 Java client
+  count: 1
+  storage: 10Gi
+  heap: 1g
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { cpu: "2", memory: 2Gi }
+
+# Analytics copies of the CDC streams (Kafka -> MongoDB sink).
+mongodb:
+  enabled: true
+  name: mongo-dc2
+  version: 8.0.32                  # quay.io/mongodb/mongodb-community-server:8.0.32-ubi8
+  members: 1
+  storage: 5Gi
+  users:
+    - name: analytics
+      db: admin
+      passwordSecret: mongo-dc2-analytics-password   # terraform/datastores-dc2.tf
+      roles:
+        - { name: readWrite, db: analytics }
+        - { name: clusterMonitor, db: admin }
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+# Payment events fanned out to RabbitMQ consumers (Kafka -> RabbitMQ sink).
+rabbitmq:
+  enabled: true
+  name: rabbitmq-dc2
+  replicas: 1
+  storage: 2Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  topology:
+    exchanges:
+      - { name: payments, type: fanout }
+    queues:
+      - { name: payments.audit }
+    bindings:
+      - { source: payments, destination: payments.audit }

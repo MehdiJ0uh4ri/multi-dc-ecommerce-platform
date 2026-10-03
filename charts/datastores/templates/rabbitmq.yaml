@@ -1,0 +1,67 @@
+{{- with .Values.rabbitmq }}
+{{- if .enabled }}
+# RabbitMQ Cluster Operator. Default credentials: Secret <name>-default-user
+# (keys username, password). AMQP on Service <name>:5672.
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .name }}
+spec:
+  replicas: {{ .replicas }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  persistence:
+    storageClassName: local-path
+    storage: {{ .storage }}
+  override:
+    statefulSet:
+      spec:
+        template:
+          metadata:
+            labels:
+              {{ $.Values.roleLabel | quote }}: rabbitmq
+{{- $cluster := .name }}
+# Topology (Messaging Topology Operator): exchanges, queues and bindings as resources.
+{{- range .topology.exchanges }}
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Exchange
+metadata:
+  name: {{ $cluster }}-{{ .name | replace "." "-" }}
+spec:
+  name: {{ .name }}
+  type: {{ .type | default "fanout" }}
+  durable: true
+  rabbitmqClusterReference:
+    name: {{ $cluster }}
+{{- end }}
+{{- range .topology.queues }}
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Queue
+metadata:
+  name: {{ $cluster }}-{{ .name | replace "." "-" }}
+spec:
+  name: {{ .name }}
+  durable: true
+  rabbitmqClusterReference:
+    name: {{ $cluster }}
+{{- end }}
+{{- range .topology.bindings }}
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Binding
+metadata:
+  name: {{ $cluster }}-{{ .source | replace "." "-" }}-to-{{ .destination | replace "." "-" }}
+spec:
+  source: {{ .source }}
+  destination: {{ .destination }}
+  destinationType: queue
+  routingKey: {{ .routingKey | default "" | quote }}
+  rabbitmqClusterReference:
+    name: {{ $cluster }}
+{{- end }}
+{{- end }}
+{{- end }}
