@@ -1,0 +1,16 @@
+{{- range .Values.connectors }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: {{ .name }}
+  labels:
+    strimzi.io/cluster: {{ .cluster }}
+spec:
+  class: {{ .class }}
+  tasksMax: {{ .tasksMax | default 1 }}
+  autoRestart:
+    enabled: true
+  config:
+    {{- toYaml .config | nindent 4 }}
+{{- end }}

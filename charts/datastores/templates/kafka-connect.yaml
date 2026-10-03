@@ -1,0 +1,63 @@
+{{- with .Values.kafkaConnect }}
+{{- if .enabled }}
+# Kafka Connect with plugins built by Strimzi (Buildah) and pushed to the k3d registry.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnect
+metadata:
+  name: {{ .name }}
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  version: {{ $.Values.kafka.version }}
+  replicas: 1
+  bootstrapServers: {{ .bootstrapServers }}
+  groupId: {{ .name }}
+  configStorageTopic: {{ .name }}-configs
+  offsetStorageTopic: {{ .name }}-offsets
+  statusStorageTopic: {{ .name }}-status
+  {{- with .config }}
+  config:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $.Values.metrics.enabled }}
+  metricsConfig:
+    type: jmxPrometheusExporter
+    valueFrom:
+      configMapKeyRef:
+        name: {{ .name }}-metrics
+        key: metrics-config.yml
+  {{- end }}
+  build:
+    output:
+      type: docker
+      image: {{ .image }}
+      {{- with .pushOptions }}
+      additionalPushOptions:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    plugins:
+      {{- toYaml .plugins | nindent 6 }}
+    {{- with .buildResources }}
+    resources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .jvmOptions }}
+  jvmOptions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    pod:
+      metadata:
+        labels:
+          {{ $.Values.roleLabel | quote }}: kafka-connect
+    {{- with .env }}
+    connectContainer:
+      env:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- end }}

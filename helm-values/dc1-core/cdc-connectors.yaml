@@ -1,0 +1,51 @@
+# KafkaConnector CRs for DC1 (charts/datastores, release "cdc-connectors").
+# Separate release applied after the services: Debezium's filtered publication needs
+# the tables to exist, and the services create them on startup (ddl-auto=update).
+# decimal.handling.mode=double: with schema-less JSON the default ("precise") encodes
+# NUMERIC columns such as orders.order_fee as base64 bytes, unreadable by the sinks.
+connectors:
+  # Order events -> topic dborder.public.orders (Phase 3 check, mirrored to DC2).
+  - name: orders-cdc
+    cluster: connect-dc1
+    class: io.debezium.connector.postgresql.PostgresConnector
+    tasksMax: 1
+    config:
+      database.hostname: pg-dc1-rw
+      database.port: 5432
+      database.user: ${env:PG_DC1_USER}
+      database.password: ${env:PG_DC1_PASSWORD}
+      database.dbname: orderservice
+      topic.prefix: dborder
+      plugin.name: pgoutput
+      slot.name: dbz_orders
+      publication.name: dbz_orders
+      publication.autocreate.mode: filtered
+      table.include.list: public.orders
+      decimal.handling.mode: double
+
+  # Product events for search-service (ADR-021). The upstream schema is table "products"
+  # with key column "product_id"; search-service's ProductSyncDataConsumer listens on
+  # dbproduct.public.product and reads key field "id". Two SMTs bridge the difference.
+  - name: products-cdc
+    cluster: connect-dc1
+    class: io.debezium.connector.postgresql.PostgresConnector
+    tasksMax: 1
+    config:
+      database.hostname: pg-dc1-rw
+      database.port: 5432
+      database.user: ${env:PG_DC1_USER}
+      database.password: ${env:PG_DC1_PASSWORD}
+      database.dbname: productservice
+      topic.prefix: dbproduct
+      plugin.name: pgoutput
+      slot.name: dbz_products
+      publication.name: dbz_products
+      publication.autocreate.mode: filtered
+      table.include.list: public.products
+      decimal.handling.mode: double
+      transforms: topic,key
+      transforms.topic.type: org.apache.kafka.connect.transforms.RegexRouter
+      transforms.topic.regex: dbproduct\.public\.products
+      transforms.topic.replacement: dbproduct.public.product
+      transforms.key.type: org.apache.kafka.connect.transforms.ReplaceField$Key
+      transforms.key.renames: product_id:id
