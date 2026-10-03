@@ -1,0 +1,8 @@
+apiVersion: v2
+name: spring-service
+description: >-
+  One Spring Boot microservice from app/ (Deployment + Service). Adapted from
+  app/k8s/backend/*.yaml: same ports, actuator probes on the management port and
+  container security context. One Helm release per service.
+type: application
+version: 0.1.0

@@ -1,0 +1,28 @@
+# Pod label consumed by terraform/network-policies.tf.
+roleLabel: platform.local/role
+role: api-service
+
+# Set by Terraform so template edits trigger an upgrade. Not used in templates.
+chartChecksum: ""
+
+replicas: 1
+
+image:
+  repository: ""
+  digest: ""          # preferred: sha256:...; falls back to tag when empty
+  tag: latest
+  pullPolicy: IfNotPresent
+
+port: 8080            # server.port of the service
+managementPort: 9000  # actuator (health, prometheus)
+
+# Plain env vars: NAME: value. Maps deep-merge across values files.
+env: {}
+# Env vars from Secrets: NAME: { secret: <name>, key: <key> }
+secretEnv: {}
+
+resources: {}
+
+startupProbe:
+  periodSeconds: 10
+  failureThreshold: 30

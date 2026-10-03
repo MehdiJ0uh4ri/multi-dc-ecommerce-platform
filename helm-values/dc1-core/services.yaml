@@ -1,0 +1,78 @@
+# DC1 microservices (charts/spring-service), one Helm release per entry under `services`.
+# terraform/services-dc1.tf passes `common` then the service entry; Helm deep-merges maps.
+# Images pinned by digest: upstream only publishes :latest/:main (resolved 2026-09-15).
+
+common:
+  env:
+    # From app/k8s/configmap.yaml. order-service's Liquibase changelog creates no
+    # tables and its own default is ddl-auto=validate, so upstream overrides to update.
+    SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    # Phase 6: publish http.server.requests histogram buckets (p95 latency per service).
+    MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILES_HISTOGRAM_HTTP_SERVER_REQUESTS: "true"
+    JAVA_TOOL_OPTIONS: "-Xms100m -Xmx200m -XX:+UseContainerSupport"
+    JWT_ISSUER_URI: http://keycloak.dc1-core.svc.cluster.local:8080/realms/ecommerce
+    KEYCLOAK_SERVER_URL: http://keycloak.dc1-core.svc.cluster.local:8080
+    KAFKA_SERVERS: kafka-dc1-kafka-bootstrap:9092
+    POSTGRES_HOST: pg-dc1-rw
+    POSTGRES_PORT: "5432"
+  secretEnv:
+    POSTGRES_USER: { secret: pg-dc1-ecommerce, key: username }
+    POSTGRES_PASSWORD: { secret: pg-dc1-ecommerce, key: password }
+  resources:
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+services:
+  auth-service:
+    image: { repository: ghcr.io/hoangtien2k3/auth-service, digest: "sha256:05e10168ab462bf57e3915e3ab90e8a574c1cf79160a118df9a9bb8e0e5ceff6" }
+    port: 8088
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/authservice
+      KEYCLOAK_PUBLIC_SERVER_URL: http://keycloak.dc1-core.svc.cluster.local:8080
+      KEYCLOAK_ADMIN_USERNAME: admin
+    secretEnv:
+      KEYCLOAK_ADMIN_PASSWORD: { secret: keycloak-admin, key: password }
+
+  product-service:
+    image: { repository: ghcr.io/hoangtien2k3/product-service, digest: "sha256:66a4e7d3922f4667649cfba4c55140067b14ff69086fbb0e83900b966212bc7b" }
+    port: 8086
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/productservice
+
+  order-service:
+    image: { repository: ghcr.io/hoangtien2k3/order-service, digest: "sha256:81db22866bac6748e70ac421b44de73eb41c138f519d9cf0a3689d745999211e" }
+    port: 8084
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/orderservice
+
+  payment-service:
+    image: { repository: ghcr.io/hoangtien2k3/payment-service, digest: "sha256:dd7b5a794ec3ed41ef3595275f4f8e2575d0351a2d139b8aeb17ff80127ec65e" }
+    port: 8085
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/paymentservice
+      # ReactiveKafkaAppProperties uses @Value("${kafka.bootstrap.servers}") with no default,
+      # separate from spring.kafka.bootstrap-servers (KAFKA_SERVERS). Unset, startup fails
+      # with "Could not resolve placeholder 'kafka.bootstrap.servers'".
+      KAFKA_BOOTSTRAP_SERVERS: kafka-dc1-kafka-bootstrap:9092
+
+  inventory-service:
+    image: { repository: ghcr.io/hoangtien2k3/inventory-service, digest: "sha256:f92d7108fca91fa2d5b98c5bd05a822e43e615b6f8f15c532e961ffb729d4419" }
+    port: 8082
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/inventoryservice
+
+  tax-service:
+    # Upstream defect at 394b34b: LocationService injects RestClient, but nothing defines
+    # a RestClient bean (common-spring only provides RestClient.Builder), so the context
+    # fails to start. Not fixable by configuration; see docs/upstream-app-findings.md.
+    enabled: false
+    image: { repository: ghcr.io/hoangtien2k3/tax-service, digest: "sha256:3698b41731f479065b6795b5e16d72872615b5c82e4fbf6c840e54286fa788a3" }
+    port: 8091
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/taxservice
+
+  shipping-service:
+    image: { repository: ghcr.io/hoangtien2k3/shipping-service, digest: "sha256:7472d2351dfe77ee1c44155ab8f8855142b89cb4f212280a546d99716755c720" }
+    port: 8087
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-dc1-rw:5432/shippingservice
