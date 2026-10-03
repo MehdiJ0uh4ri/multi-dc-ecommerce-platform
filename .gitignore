@@ -1,0 +1,22 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+!*.tfvars.example
+
+# Secrets / local config
+.env
+*.kubeconfig
+ansible/.vault-pass
+ansible/.secrets/
+ansible/**/*.retry
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
