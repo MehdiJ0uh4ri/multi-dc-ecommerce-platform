@@ -1,0 +1,27 @@
+# rustfs chart 1.0.0 (RustFS 1.0.0): S3-compatible object storage for media-service.
+# Replaces MinIO, whose community server and operator repositories are archived (ADR-016).
+mode:
+  standalone:
+    enabled: true
+  distributed:
+    enabled: false
+replicaCount: 1
+
+image:
+  rustfs:
+    tag: "1.0.0"
+
+secret:
+  existingSecret: rustfs-dc2-credentials   # RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY (Terraform)
+
+storageclass:
+  name: local-path
+  dataStorageSize: 10Gi
+  logStorageSize: 256Mi
+
+podLabels:
+  platform.local/role: object-storage
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: "1", memory: 1Gi }
